@@ -12,6 +12,7 @@
     "release:minor": "node scripts/release.js minor",
     "release:major": "node scripts/release.js major"
   },
+  "packageManager": "pnpm@9.15.4",
   "engines": {
     "node": ">=18"
   },

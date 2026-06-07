@@ -1,7 +1,7 @@
 # ── Build stage ────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable
 
 WORKDIR /app
 
@@ -24,7 +24,7 @@ RUN pnpm --filter @wydev/amail build
 # ── Production stage ───────────────────────────────────────────────
 FROM node:20-alpine AS production
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable
 
 WORKDIR /app
 
