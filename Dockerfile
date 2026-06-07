@@ -8,14 +8,14 @@ WORKDIR /app
 # Copy workspace root
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/server/package.json packages/server/
-COPY packages/amail/package.json packages/amail/
+COPY packages/amail-node/package.json packages/amail-node/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile || pnpm install
 
 # Copy source
 COPY packages/server/ packages/server/
-COPY packages/amail/ packages/amail/
+COPY packages/amail-node/ packages/amail-node/
 
 # Build
 RUN pnpm --filter @amail/server build
@@ -31,7 +31,7 @@ WORKDIR /app
 # Copy workspace root
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/server/package.json packages/server/
-COPY packages/amail/package.json packages/amail/
+COPY packages/amail-node/package.json packages/amail-node/
 
 # Install production dependencies only
 RUN pnpm install --frozen-lockfile --prod || pnpm install --prod
