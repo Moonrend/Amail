@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="mdui-theme-dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <title>Amail — 邮件代理网关</title>
+  <link rel="stylesheet" href="https://unpkg.com/mdui@2/mdui.css">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+  <script src="https://unpkg.com/mdui@2/mdui.global.js"></script>
+  <style>
+    body {
+      margin: 0;
+
+      <% if (typeof noPadding==='undefined' || !noPadding) {
+        %>padding-bottom: 80px<%
+      }
+
+      %>
+    }
+  </style>
+  <!-- Filled -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+
+  <!-- Outlined -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet" />
+
+  <!-- Rounded -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet" />
+
+  <!-- Sharp -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Sharp" rel="stylesheet" />
+
+  <!-- Two Tone -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Two+Tone" rel="stylesheet" />
+</head>
+
+<body>
+  <mdui-layout style="min-height:100vh">
+    <% if (typeof noBar==='undefined' || !noBar) { %>
+
+      <mdui-top-app-bar>
+        <mdui-button-icon icon="menu" id="trigger-drawer"></mdui-button-icon>
+
+        <mdui-top-app-bar-title>
+          <%= title %>
+        </mdui-top-app-bar-title>
+        <div style="flex-grow:1"></div>
+        <% if (typeof extra !=='undefined' && extra) { %><%- extra %>
+            <% } %>
+              <mdui-button-icon icon="logout--rounded"
+                onclick="localStorage.removeItem('amail_admin_token');window.location.href='/'"></mdui-button-icon>
+      </mdui-top-app-bar>
+      <mdui-navigation-drawer close-on-overlay-click class="example-drawer" open="true">
+        <mdui-list id="navList" mdui-collapse="{accordion: true}">
+          <mdui-list-item icon="dns" href="/smtp" value="smtp">SMTP</mdui-list-item>
+          <mdui-list-item icon="key" href="/apikeys" value="apikeys">API Keys</mdui-list-item>
+          <mdui-list-item icon="email" href="/logs" value="logs">邮件日志</mdui-list-item>
+          <mdui-list-item icon="analytics" value="analytics" href="/analytics">数据统计</mdui-list-item>
+        </mdui-list>
+
+      </mdui-navigation-drawer>
+
+      <script>
+        const navigationDrawer = document.querySelector(".example-drawer");
+        const triggerButton = document.querySelector("#trigger-drawer");
+        const navigationDrawerList = navigationDrawer?.querySelector("#navList");
+        const currentPath = window.location.pathname.replace(/\/$/, "");
+
+        triggerButton?.addEventListener("click", () => {
+          navigationDrawer.open = !navigationDrawer.open;
+        });
+
+        navigationDrawerList?.querySelectorAll("mdui-list-item[href]").forEach((item) => {
+          const href = (item.getAttribute("href") || "").replace(/\/$/, "");
+          if (href && currentPath.startsWith(href)) {
+            item.active = true;
+          }
+        });
+
+
+      </script>
+      <mdui-layout-main>
+      <% } %>

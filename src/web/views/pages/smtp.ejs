@@ -1,0 +1,547 @@
+<%- include('../partials/header', { title: 'SMTP 配置' }) %>
+
+<div style="max-width:1200px;margin:0 auto;padding:16px">
+  <div id="smtpGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">
+    <mdui-card variant="filled" style="padding:24px;text-align:center;opacity:.6">加载中...</mdui-card>
+  </div>
+</div>
+
+<mdui-fab icon="add" style="position:fixed;right:24px;bottom:24px;z-index:10" onclick="showAddDialog()"></mdui-fab>
+
+<!-- Step 1: Email input dialog -->
+<mdui-dialog id="emailDlg" close-on-overlay-click close-on-esc headline="添加 SMTP 配置">
+  <div style="display:flex;flex-direction:column;gap:16px;padding:8px 0">
+    <p style="margin:0;font-size:14px;opacity:.7">输入邮箱地址，自动发现 SMTP 服务器配置</p>
+    <mdui-text-field id="emailInput" label="邮箱地址" variant="outlined" type="email" placeholder="user@example.com"></mdui-text-field>
+    <div id="autoconfigStatus" style="display:none"></div>
+    <div id="autoconfigResults" style="display:none"></div>
+  </div>
+  <mdui-button slot="action" variant="text" onclick="closeEmailDlg()">取消</mdui-button>
+  <mdui-button slot="action" id="discoverBtn" onclick="doDiscover()">发现配置</mdui-button>
+  <mdui-button slot="action" id="manualBtn" variant="tonal" onclick="skipToManual()">手动填写</mdui-button>
+</mdui-dialog>
+
+<!-- Step 2: Config edit dialog -->
+<mdui-dialog id="dlg" close-on-overlay-click close-on-esc headline="SMTP 配置">
+  <div style="display:flex;flex-direction:column;gap:12px">
+    <mdui-text-field id="fName" label="配置名称（即 API ID）" variant="outlined" helper="用于 API 调用的标识符，创建后不可修改"></mdui-text-field>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px">
+      <mdui-text-field id="fHost" label="SMTP 服务器" variant="outlined" placeholder="smtp.gmail.com"></mdui-text-field>
+      <div style="position:relative">
+        <mdui-text-field id="fPort" label="端口" variant="outlined" type="number" value="587" autocomplete="off"></mdui-text-field>
+        <div id="portSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:10;margin-top:4px">
+          <mdui-card variant="elevated" style="padding:4px 0">
+            <mdui-list>
+              <mdui-list-item onclick="pickPort(587)" headline="587" description="STARTTLS（推荐）"></mdui-list-item>
+              <mdui-list-item onclick="pickPort(465)" headline="465" description="SSL/TLS"></mdui-list-item>
+              <mdui-list-item onclick="pickPort(25)" headline="25" description="不推荐，通常无加密"></mdui-list-item>
+              <mdui-list-item onclick="pickPort(2525)" headline="2525" description="STARTTLS"></mdui-list-item>
+            </mdui-list>
+          </mdui-card>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <mdui-select id="fSecure" label="加密方式" variant="outlined" value="false">
+        <mdui-menu-item value="false">STARTTLS</mdui-menu-item>
+        <mdui-menu-item value="true">SSL/TLS</mdui-menu-item>
+        <mdui-menu-item value="none">无加密</mdui-menu-item>
+      </mdui-select>
+      <mdui-select id="fAuth" label="认证方式" variant="outlined" value="password">
+        <mdui-menu-item value="password">密码</mdui-menu-item>
+        <mdui-menu-item value="login">LOGIN</mdui-menu-item>
+        <mdui-menu-item value="plain">PLAIN</mdui-menu-item>
+        <mdui-menu-item value="cram-md5">CRAM-MD5</mdui-menu-item>
+        <mdui-menu-item value="oauth2">OAuth2</mdui-menu-item>
+        <mdui-menu-item value="none">无认证</mdui-menu-item>
+      </mdui-select>
+    </div>
+    <div id="pwFields">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <mdui-text-field id="fUser" label="用户名" variant="outlined"></mdui-text-field>
+        <mdui-text-field id="fPass" label="密码" variant="outlined" type="password"></mdui-text-field>
+      </div>
+    </div>
+    <div id="oauthFields" style="display:none">
+      <div id="oauthGuide" style="margin-bottom:16px"></div>
+      <mdui-text-field id="fCid" label="Client ID" variant="outlined" style="margin-bottom:12px"></mdui-text-field>
+      <mdui-text-field id="fCsec" label="Client Secret" variant="outlined" type="password" style="margin-bottom:12px"></mdui-text-field>
+      <mdui-text-field id="fRtok" label="Refresh Token" variant="outlined" type="password" style="margin-bottom:12px"></mdui-text-field>
+      <mdui-text-field id="fTid" label="Tenant ID（Microsoft 专用）" variant="outlined" placeholder="common"></mdui-text-field>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <mdui-text-field id="fFrom" label="发件地址" variant="outlined" placeholder="noreply@example.com"></mdui-text-field>
+      <mdui-text-field id="fFname" label="发件人名称" variant="outlined" helper="留空则使用 API 调用时传入的名称"></mdui-text-field>
+    </div>
+    <mdui-text-field id="fPrio" label="优先级" variant="outlined" type="number" value="0" helper="数字越大越优先"></mdui-text-field>
+  </div>
+  <mdui-button slot="action" variant="text" onclick="closeDialog()">取消</mdui-button>
+  <mdui-button slot="action" onclick="saveConfig()">保存</mdui-button>
+</mdui-dialog>
+
+<!-- Test result dialog -->
+<mdui-dialog id="testDlg" close-on-overlay-click headline="连接测试">
+  <div id="testResult" style="padding:8px 0"></div>
+  <mdui-button slot="action" onclick="document.getElementById('testDlg').open=false">确定</mdui-button>
+</mdui-dialog>
+
+<!-- Test send dialog -->
+<mdui-dialog id="sendDlg" close-on-overlay-click close-on-esc headline="发送测试邮件">
+  <div style="display:flex;flex-direction:column;gap:12px">
+    <div id="sendConfigInfo" style="font-size:13px;opacity:.7"></div>
+    <mdui-text-field id="sendTo" label="收件邮箱" variant="outlined" type="email" placeholder="test@example.com"></mdui-text-field>
+    <div id="sendResult" style="display:none"></div>
+  </div>
+  <mdui-button slot="action" variant="text" onclick="closeSendDlg()">关闭</mdui-button>
+  <mdui-button slot="action" id="sendBtn" onclick="doSendTest()">发送</mdui-button>
+</mdui-dialog>
+
+<%- include('../partials/scripts') %>
+<script>
+if (!requireAuth()) throw 'unauthorized';
+var editId = '';
+var autoconfigData = null;
+
+// Port suggestions dropdown
+var portInput = document.getElementById('fPort');
+var portSuggestions = document.getElementById('portSuggestions');
+
+portInput.addEventListener('focus', function() {
+  portSuggestions.style.display = 'block';
+});
+portInput.addEventListener('input', function() {
+  suggestEncryption(this.value);
+});
+// Close on click outside
+document.addEventListener('click', function(e) {
+  if (!portSuggestions.contains(e.target) && e.target !== portInput) {
+    portSuggestions.style.display = 'none';
+  }
+});
+
+function pickPort(val) {
+  portInput.value = String(val);
+  portSuggestions.style.display = 'none';
+  suggestEncryption(val);
+}
+
+function suggestEncryption(port) {
+  port = parseInt(port);
+  var secure = document.getElementById('fSecure');
+  if (port === 465) secure.value = 'true';
+  else if (port === 587 || port === 2525) secure.value = 'false';
+  else if (port === 25) secure.value = 'none';
+}
+
+// Auto-discover SMTP config when host field changes
+var hostAutoconfigTimer = null;
+var lastAutoconfigHost = '';
+document.getElementById('fHost').addEventListener('input', function() {
+  var host = this.value.trim();
+  clearTimeout(hostAutoconfigTimer);
+  if (!host || host === lastAutoconfigHost) return;
+  hostAutoconfigTimer = setTimeout(function() { discoverFromHost(host); }, 800);
+});
+
+function discoverFromHost(host) {
+  // Extract domain: smtp.gmail.com → gmail.com, smtp-mail.outlook.com → outlook.com
+  var parts = host.split('.');
+  var domain = host;
+  if (parts.length > 2) {
+    // Try common SMTP prefixes to extract domain
+    var prefixes = ['smtp', 'smtp-mail', 'smtpout', 'smtpauth', 'mail'];
+    for (var i = 0; i < prefixes.length; i++) {
+      if (parts[0].toLowerCase() === prefixes[i]) {
+        domain = parts.slice(1).join('.');
+        break;
+      }
+    }
+  }
+
+  lastAutoconfigHost = host;
+  api('/api/autoconfig?domain=' + encodeURIComponent(domain)).then(function(result) {
+    if (!result.smtp || !result.smtp.length) return;
+
+    // Find best match: prefer exact host match, then first result
+    var best = result.smtp[0];
+    for (var i = 0; i < result.smtp.length; i++) {
+      if (result.smtp[i].host === host) { best = result.smtp[i]; break; }
+    }
+
+    // Auto-fill port and encryption
+    document.getElementById('fPort').value = best.port;
+    suggestEncryption(best.port);
+
+    mdui.snackbar({
+      message: '已从 Autoconfig 获取配置：' + best.host + ':' + best.port + '，认证建议：' + (best.authType || 'password'),
+      closeable: true,
+    });
+  }).catch(function() { /* silent */ });
+}
+
+// Auth type toggle
+document.getElementById('fAuth').addEventListener('change', function() {
+  var isO = this.value === 'oauth2';
+  var isNone = this.value === 'none';
+  document.getElementById('pwFields').style.display = (isO || isNone) ? 'none' : 'block';
+  document.getElementById('oauthFields').style.display = isO ? 'block' : 'none';
+  if (isO) updateOAuthGuide();
+});
+
+function updateOAuthGuide() {
+  var host = document.getElementById('fHost').value.toLowerCase();
+  var guide = document.getElementById('oauthGuide');
+  if (host.includes('outlook') || host.includes('office365') || host.includes('microsoft')) {
+    guide.innerHTML = '<mdui-card variant="outlined" style="padding:16px">' +
+      '<div style="font-weight:500;margin-bottom:8px">📧 Microsoft OAuth2 设置指引</div>' +
+      '<ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.8">' +
+        '<li>前往 <a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank">Azure Portal → App registrations</a></li>' +
+        '<li>注册新应用，添加 <strong>API 权限</strong>：Office 365 Exchange Online → <code>SMTP.Send</code></li>' +
+        '<li>在 <strong>Certificates & secrets</strong> 创建 Client Secret</li>' +
+        '<li>在 <strong>Authentication</strong> 添加重定向 URI（如 <code>http://localhost</code>）</li>' +
+        '<li>使用 <a href="https://login.microsoftonline.com/common/oauth2/v2.0/authorize" target="_blank">OAuth2 授权链接</a> 获取 authorization code</li>' +
+        '<li>用 authorization code 换取 Refresh Token</li>' +
+      '</ol></mdui-card>';
+  } else if (host.includes('gmail') || host.includes('google')) {
+    guide.innerHTML = '<mdui-card variant="outlined" style="padding:16px">' +
+      '<div style="font-weight:500;margin-bottom:8px">📧 Google OAuth2 设置指引</div>' +
+      '<ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.8">' +
+        '<li>前往 <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console → Credentials</a></li>' +
+        '<li>创建 OAuth 2.0 Client ID（应用类型：Web application）</li>' +
+        '<li>启用 <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank">Gmail API</a></li>' +
+        '<li>确保 Gmail 设置中已启用 <strong>IMAP 访问</strong></li>' +
+        '<li>添加重定向 URI（如 <code>http://localhost</code>）</li>' +
+        '<li>使用授权链接获取 authorization code，再换取 Refresh Token</li>' +
+      '</ol></mdui-card>';
+  } else {
+    guide.innerHTML = '<mdui-card variant="outlined" style="padding:16px">' +
+      '<div style="font-weight:500;margin-bottom:8px">📧 OAuth2 设置</div>' +
+      '<p style="margin:0;font-size:13px;opacity:.7">请在您的邮件服务商处创建 OAuth2 应用，获取 Client ID、Client Secret 和 Refresh Token。</p></mdui-card>';
+  }
+}
+
+// Step 1: Email input dialog
+function showAddDialog() {
+  editId = '';
+  autoconfigData = null;
+  document.getElementById('emailInput').value = '';
+  document.getElementById('autoconfigStatus').style.display = 'none';
+  document.getElementById('autoconfigResults').style.display = 'none';
+  document.getElementById('discoverBtn').disabled = false;
+  document.getElementById('discoverBtn').loading = false;
+  document.getElementById('emailDlg').open = true;
+}
+
+function closeEmailDlg() { document.getElementById('emailDlg').open = false; }
+
+function doDiscover() {
+  var email = document.getElementById('emailInput').value.trim();
+  if (!email || email.indexOf('@') === -1) {
+    mdui.snackbar({ message: '请输入有效的邮箱地址' });
+    return;
+  }
+  var domain = email.split('@')[1];
+  var btn = document.getElementById('discoverBtn');
+  btn.loading = true;
+  btn.disabled = true;
+
+  var status = document.getElementById('autoconfigStatus');
+  status.style.display = 'block';
+  status.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--mdui-color-secondary-container);color:var(--mdui-color-on-secondary-container)">' +
+    '<mdui-progress-circular style="width:20px;height:20px"></mdui-progress-circular>' +
+    '<span>正在从 Thunderbird Autoconfig 查询 ' + esc(domain) + ' 的 SMTP 配置...</span></div>';
+
+  api('/api/autoconfig?domain=' + encodeURIComponent(domain)).then(function(result) {
+    btn.loading = false;
+    btn.disabled = false;
+    autoconfigData = result;
+
+    if (!result.smtp || !result.smtp.length) {
+      status.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--mdui-color-tertiary-container);color:var(--mdui-color-on-tertiary-container)">' +
+        '<mdui-icon name="info--rounded"></mdui-icon>' +
+        '<span>未找到自动配置，请手动填写 SMTP 设置</span></div>';
+      setTimeout(function() { closeEmailDlg(); showManualDialog(email); }, 1000);
+      return;
+    }
+
+    var source = result.source === 'thunderbird' ? 'Thunderbird Autoconfig' : 'DNS SRV';
+    status.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--mdui-color-tertiary-container);color:var(--mdui-color-on-tertiary-container)">' +
+      '<mdui-icon name="check_circle--rounded"></mdui-icon>' +
+      '<span>从 ' + source + ' 找到 ' + result.smtp.length + ' 个 SMTP 配置</span></div>';
+
+    var results = document.getElementById('autoconfigResults');
+    results.style.display = 'block';
+    results.innerHTML = result.smtp.map(function(s, i) {
+      var encLabel = s.secure ? 'SSL/TLS' : (s.socketType || 'STARTTLS');
+      return '<mdui-card variant="outlined" style="padding:12px;cursor:pointer;margin-top:8px" onclick="pickAutoconfig(' + i + ')">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between">' +
+          '<div><strong>' + esc(s.host) + ':' + s.port + '</strong> <span style="opacity:.6;font-size:13px">' + encLabel + '</span></div>' +
+          '<mdui-icon name="arrow_forward--rounded"></mdui-icon>' +
+        '</div>' +
+        '<div style="font-size:12px;opacity:.5;margin-top:4px">认证：' + (s.authType || 'password') + ' | 用户名：' + esc(s.username || '%EMAILADDRESS%') + '</div>' +
+        '</mdui-card>';
+    }).join('') +
+    '<div style="margin-top:12px;text-align:center">' +
+      '<mdui-button variant="text" onclick="closeEmailDlg();showManualDialog()">手动填写其他配置</mdui-button>' +
+    '</div>';
+  }).catch(function(e) {
+    btn.loading = false;
+    btn.disabled = false;
+    status.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--mdui-color-error-container);color:var(--mdui-color-on-error-container)">' +
+      '<mdui-icon name="error--rounded"></mdui-icon>' +
+      '<span>查询失败：' + esc(e.message) + '</span></div>';
+  });
+}
+
+function pickAutoconfig(index) {
+  if (!autoconfigData || !autoconfigData.smtp[index]) return;
+  var s = autoconfigData.smtp[index];
+  var domain = autoconfigData.domain;
+  var email = document.getElementById('emailInput').value.trim();
+  closeEmailDlg();
+  showManualDialog(email, {
+    name: domain,
+    host: s.host,
+    port: s.port,
+    secure: s.secure,
+    auth_type: s.authType || 'password',
+    username: (s.username || '%EMAILADDRESS%').replace('%EMAILADDRESS%', email),
+    from_address: email,
+  });
+}
+
+function skipToManual() {
+  var email = document.getElementById('emailInput').value.trim();
+  closeEmailDlg();
+  showManualDialog(email);
+}
+
+// Step 2: Config edit dialog
+function showManualDialog(email, preset) {
+  editId = '';
+  var d = document.getElementById('dlg');
+  d.headline = '添加 SMTP 配置';
+
+  var domain = email && email.indexOf('@') > -1 ? email.split('@')[1] : '';
+  document.getElementById('fName').value = (preset && preset.name) || domain || '';
+  document.getElementById('fName').removeAttribute('disabled');
+  document.getElementById('fHost').value = (preset && preset.host) || '';
+  document.getElementById('fPort').value = (preset && preset.port) || '587';
+  document.getElementById('fSecure').value = (preset && preset.secure) ? 'true' : ((preset && preset.secure === false) ? 'false' : 'false');
+  document.getElementById('fAuth').value = (preset && preset.auth_type) || 'password';
+  document.getElementById('fUser').value = (preset && preset.username) || email || '';
+  document.getElementById('fPass').value = '';
+  document.getElementById('fCid').value = '';
+  document.getElementById('fCsec').value = '';
+  document.getElementById('fRtok').value = '';
+  document.getElementById('fTid').value = '';
+  document.getElementById('fFrom').value = (preset && preset.from_address) || email || '';
+  document.getElementById('fFname').value = '';
+  document.getElementById('fPrio').value = '0';
+
+  var ev = new Event('change');
+  document.getElementById('fAuth').dispatchEvent(ev);
+  d.open = true;
+}
+
+function showDialog(c) {
+  editId = (c && c.id) || '';
+  var d = document.getElementById('dlg');
+  d.headline = '编辑配置';
+  document.getElementById('fName').value = (c && c.name) || '';
+  document.getElementById('fName').setAttribute('disabled', 'true');
+  document.getElementById('fHost').value = (c && c.host) || '';
+
+  document.getElementById('fPort').value = (c && c.port) || 587;
+  document.getElementById('fSecure').value = (c && c.secure) ? 'true' : 'false';
+  document.getElementById('fAuth').value = (c && c.auth_type) || 'password';
+  document.getElementById('fUser').value = (c && c.username) || '';
+  document.getElementById('fPass').value = (c && c.password) || '';
+  document.getElementById('fCid').value = (c && c.oauth2_client_id) || '';
+  document.getElementById('fCsec').value = (c && c.oauth2_client_secret) || '';
+  document.getElementById('fRtok').value = (c && c.oauth2_refresh_token) || '';
+  document.getElementById('fTid').value = (c && c.oauth2_tenant_id) || '';
+  document.getElementById('fFrom').value = (c && c.from_address) || '';
+  document.getElementById('fFname').value = (c && c.from_name) || '';
+  document.getElementById('fPrio').value = (c && c.priority != null) ? c.priority : 0;
+
+  var ev = new Event('change');
+  document.getElementById('fAuth').dispatchEvent(ev);
+  d.open = true;
+}
+
+function closeDialog() { document.getElementById('dlg').open = false; }
+
+function editConfig(id, e) {
+  e.stopPropagation();
+  api('/api/smtp-configs/' + id).then(showDialog).catch(function(err) { mdui.snackbar({ message: err.message }); });
+}
+
+function getPort() {
+  return parseInt(document.getElementById('fPort').value) || 587;
+}
+
+function saveConfig() {
+  var name = document.getElementById('fName').value.trim();
+  if (!name) {
+    mdui.snackbar({ message: '请输入配置名称' });
+    return;
+  }
+
+  var secureVal = document.getElementById('fSecure').value;
+  var body = {
+    name: name,
+    host: document.getElementById('fHost').value,
+    port: getPort(),
+    secure: secureVal === 'true',
+    auth_type: document.getElementById('fAuth').value,
+    username: document.getElementById('fUser').value || undefined,
+    password: document.getElementById('fPass').value || undefined,
+    oauth2_client_id: document.getElementById('fCid').value || undefined,
+    oauth2_client_secret: document.getElementById('fCsec').value || undefined,
+    oauth2_refresh_token: document.getElementById('fRtok').value || undefined,
+    oauth2_tenant_id: document.getElementById('fTid').value || undefined,
+    from_address: document.getElementById('fFrom').value || undefined,
+    from_name: document.getElementById('fFname').value || undefined,
+    priority: parseInt(document.getElementById('fPrio').value) || 0,
+  };
+
+  // Remove secure field if "none"
+  if (secureVal === 'none') body.secure = false;
+
+  var url = editId ? '/api/smtp-configs/' + editId : '/api/smtp-configs';
+  var method = editId ? 'PUT' : 'POST';
+  api(url, { method: method, body: JSON.stringify(body) }).then(function() {
+    mdui.snackbar({ message: '保存成功' });
+    closeDialog();
+    load();
+  }).catch(function(e) { mdui.snackbar({ message: e.message }); });
+}
+
+function testConfig(id, e) {
+  e.stopPropagation();
+  api('/api/smtp-configs/' + id + '/test', { method: 'POST' }).then(function(r) {
+    var d = document.getElementById('testDlg');
+    document.getElementById('testResult').innerHTML = r.success
+      ? '<div style="display:flex;align-items:center;gap:12px"><mdui-icon name="check_circle--rounded" style="font-size:32px;color:var(--mdui-color-tertiary)"></mdui-icon><div><strong>连接成功</strong><p style="margin:4px 0 0;font-size:13px;opacity:.7">SMTP 服务器验证通过</p></div></div>'
+      : '<div style="display:flex;align-items:center;gap:12px"><mdui-icon name="error--rounded" style="font-size:32px;color:var(--mdui-color-error)"></mdui-icon><div><strong>连接失败</strong><p style="margin:4px 0 0;font-size:13px;opacity:.7">' + esc(r.error) + '</p></div></div>';
+    d.open = true;
+  }).catch(function(e) { mdui.snackbar({ message: e.message }); });
+}
+
+function delConfig(id, e) {
+  e.stopPropagation();
+  mdui.confirm({
+    headline: '确认删除',
+    description: '确定删除此 SMTP 配置？',
+    confirmText: '删除',
+    cancelText: '取消',
+    onConfirm: function() {
+      api('/api/smtp-configs/' + id, { method: 'DELETE' }).then(function() {
+        mdui.snackbar({ message: '已删除' });
+        load();
+      }).catch(function(e) { mdui.snackbar({ message: e.message }); });
+    }
+  });
+}
+
+function movePriority(id, currentPrio, direction, e) {
+  e.stopPropagation();
+  var newPrio = currentPrio + direction;
+  api('/api/smtp-configs/' + id, {
+    method: 'PUT',
+    body: JSON.stringify({ priority: newPrio })
+  }).then(function() {
+    load();
+  }).catch(function(e) { mdui.snackbar({ message: e.message }); });
+}
+
+var sendConfigId = '';
+
+function showSendDlg(id, name, fromAddr, e) {
+  e.stopPropagation();
+  sendConfigId = id;
+  document.getElementById('sendConfigInfo').textContent = '通过「' + name + '」发送' + (fromAddr ? '，发件地址：' + fromAddr : '');
+  document.getElementById('sendTo').value = '';
+  document.getElementById('sendResult').style.display = 'none';
+  document.getElementById('sendBtn').disabled = false;
+  document.getElementById('sendBtn').loading = false;
+  document.getElementById('sendDlg').open = true;
+}
+
+function closeSendDlg() { document.getElementById('sendDlg').open = false; }
+
+function doSendTest() {
+  var to = document.getElementById('sendTo').value.trim();
+  if (!to || to.indexOf('@') === -1) {
+    mdui.snackbar({ message: '请输入有效的邮箱地址' });
+    return;
+  }
+  var btn = document.getElementById('sendBtn');
+  btn.loading = true;
+  btn.disabled = true;
+  document.getElementById('sendResult').style.display = 'none';
+  api('/api/smtp-configs/' + sendConfigId + '/test-send', {
+    method: 'POST',
+    body: JSON.stringify({ to: to })
+  }).then(function(r) {
+    btn.loading = false;
+    btn.disabled = false;
+    var el = document.getElementById('sendResult');
+    if (r.success) {
+      el.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--mdui-color-tertiary-container);color:var(--mdui-color-on-tertiary-container)">' +
+        '<mdui-icon name="check_circle--rounded"></mdui-icon>' +
+        '<div><strong>发送成功</strong><div style="font-size:12px;opacity:.8;margin-top:2px">Message ID: ' + esc(r.messageId) + '</div></div></div>';
+    } else {
+      el.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--mdui-color-error-container);color:var(--mdui-color-on-error-container)">' +
+        '<mdui-icon name="error--rounded"></mdui-icon>' +
+        '<div><strong>发送失败</strong><div style="font-size:12px;opacity:.8;margin-top:2px">' + esc(r.error) + '</div></div></div>';
+    }
+    el.style.display = 'block';
+  }).catch(function(e) {
+    btn.loading = false;
+    btn.disabled = false;
+    mdui.snackbar({ message: e.message });
+  });
+}
+
+function load() {
+  api('/api/smtp-configs').then(function(list) {
+    var grid = document.getElementById('smtpGrid');
+    if (!list.length) {
+      grid.innerHTML = '<mdui-card variant="filled" style="padding:48px 24px;text-align:center;opacity:.6;grid-column:1/-1">' +
+        '<mdui-icon name="dns" style="font-size:48px;display:block;margin-bottom:12px;opacity:.4"></mdui-icon>' +
+        '<div style="font-size:16px;margin-bottom:8px">暂无 SMTP 配置</div>' +
+        '<div style="font-size:13px;opacity:.6">点击右下角按钮添加第一个配置</div>' +
+        '</mdui-card>';
+      return;
+    }
+    grid.innerHTML = list.map(function(c, i) {
+      var authLabel = {password:'密码',oauth2:'OAuth2',login:'LOGIN',plain:'PLAIN','cram-md5':'CRAM-MD5','none':'无认证'}[c.auth_type] || c.auth_type;
+      return '<mdui-card variant="elevated" style="padding:20px;display:flex;flex-direction:column;gap:12px">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">' +
+          '<div style="font-size:18px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div>' +
+        '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
+          '<mdui-chip icon="dns--rounded" style="font-size:12px">' + esc(c.host) + ':' + c.port + '</mdui-chip>' +
+          '<mdui-chip icon="key--rounded" style="font-size:12px">' + authLabel + '</mdui-chip>' +
+          '<mdui-chip icon="low_priority--rounded" style="font-size:12px">P' + c.priority + '</mdui-chip>' +
+        '</div>' +
+        (c.from_address ? '<div style="font-size:12px;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">发件：' + esc(c.from_name || '') + ' &lt;' + esc(c.from_address) + '&gt;</div>' : '') +
+        '<div style="display:flex;align-items:center;gap:4px;margin-top:auto;padding-top:8px;border-top:1px solid var(--mdui-color-outline-variant)">' +
+          '<mdui-button-icon icon="wifi_tethering--rounded" onclick="testConfig(\'' + c.id + '\',event)" title="测试连接"></mdui-button-icon>' +
+          '<mdui-button-icon icon="send--rounded" onclick="showSendDlg(\'' + c.id + '\',\'' + esc(c.name) + '\',\'' + esc(c.from_address || c.username || '') + '\',event)" title="发送测试邮件"></mdui-button-icon>' +
+          '<mdui-button-icon icon="edit--rounded" onclick="editConfig(\'' + c.id + '\',event)" title="编辑"></mdui-button-icon>' +
+          '<mdui-button-icon icon="delete--rounded" onclick="delConfig(\'' + c.id + '\',event)" title="删除"></mdui-button-icon>' +
+          '<div style="flex-grow:1"></div>' +
+          '<mdui-button-icon icon="arrow_upward--rounded" onclick="movePriority(\'' + c.id + '\',' + c.priority + ',1,event)" title="提高优先级"' + (i === 0 ? ' disabled' : '') + '></mdui-button-icon>' +
+          '<mdui-button-icon icon="arrow_downward--rounded" onclick="movePriority(\'' + c.id + '\',' + c.priority + ',-1,event)" title="降低优先级"' + (i === list.length - 1 ? ' disabled' : '') + '></mdui-button-icon>' +
+        '</div>' +
+        '</mdui-card>';
+    }).join('');
+  }).catch(function(e) { mdui.snackbar({ message: e.message }); });
+}
+
+load();
+</script>
+<%- include('../partials/footer') %>

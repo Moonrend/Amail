@@ -1,0 +1,105 @@
+<%- include('../partials/header', { title: 'API Keys' }) %>
+
+<div style="max-width:1200px;margin:0 auto;padding:16px">
+  <div id="keysGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">
+    <mdui-card variant="filled" style="padding:24px;text-align:center;opacity:.6">加载中...</mdui-card>
+  </div>
+</div>
+
+<mdui-fab icon="add" style="position:fixed;right:24px;bottom:24px;z-index:10" onclick="showDialog()"></mdui-fab>
+
+<mdui-dialog id="dlg" close-on-overlay-click close-on-esc headline="创建 API Key" description="创建后请立即复制">
+  <div style="display:flex;flex-direction:column;gap:12px">
+    <mdui-text-field id="fName" label="名称" variant="outlined" placeholder="My App"></mdui-text-field>
+    <div id="keyResult" style="display:none">
+      <p style="color:var(--mdui-color-error);font-size:13px;margin:8px 0 4px">⚠️ 请立即复制，只会显示一次：</p>
+      <div id="keyVal" style="font-family:monospace;background:var(--mdui-color-surface-container-high);border:1px solid var(--mdui-color-tertiary);color:var(--mdui-color-tertiary);padding:12px 16px;border-radius:12px;word-break:break-all;font-size:13px"></div>
+    </div>
+  </div>
+  <mdui-button slot="action" variant="text" onclick="closeDialog()">关闭</mdui-button>
+  <mdui-button slot="action" id="submitBtn" onclick="createKey()">创建</mdui-button>
+</mdui-dialog>
+
+<%- include('../partials/scripts') %>
+<script>
+if (!requireAuth()) throw 'unauthorized';
+
+function load() {
+  api('/api/api-keys').then(function(list) {
+    var grid = document.getElementById('keysGrid');
+    if (!list.length) {
+      grid.innerHTML = '<mdui-card variant="filled" style="padding:48px 24px;text-align:center;opacity:.6;grid-column:1/-1">' +
+        '<mdui-icon name="key" style="font-size:48px;display:block;margin-bottom:12px;opacity:.4"></mdui-icon>' +
+        '<div style="font-size:16px;margin-bottom:8px">暂无 API Key</div>' +
+        '<div style="font-size:13px;opacity:.6">点击右下角按钮创建第一个 Key</div>' +
+        '</mdui-card>';
+      return;
+    }
+    grid.innerHTML = list.map(function(k) {
+      var statusChip = k.is_active
+        ? '<mdui-chip icon="check_circle--rounded" style="--mdui-chip-container-color:var(--mdui-color-tertiary-container);--mdui-chip-label-color:var(--mdui-color-on-tertiary-container)">启用</mdui-chip>'
+        : '<mdui-chip icon="cancel--rounded" style="--mdui-chip-container-color:var(--mdui-color-error-container);--mdui-chip-label-color:var(--mdui-color-on-error-container)">已禁用</mdui-chip>';
+      return '<mdui-card variant="elevated" style="padding:20px;display:flex;flex-direction:column;gap:12px">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">' +
+          '<div style="font-size:18px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(k.name) + '</div>' +
+          statusChip +
+        '</div>' +
+        '<div style="font-family:monospace;font-size:13px;background:var(--mdui-color-surface-container-high);padding:8px 12px;border-radius:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(k.key_prefix) + '</div>' +
+        (k.last_used_at ? '<div style="font-size:12px;opacity:.5">最后使用：' + new Date(k.last_used_at).toLocaleString('zh-CN') + '</div>' : '') +
+        '<div style="display:flex;align-items:center;gap:4px;margin-top:auto;padding-top:8px;border-top:1px solid var(--mdui-color-outline-variant)">' +
+          '<mdui-button-icon icon="' + (k.is_active ? 'toggle_on' : 'toggle_off') + '--rounded" onclick="toggleKey(\'' + k.id + '\',event)" title="' + (k.is_active ? '禁用' : '启用') + '"></mdui-button-icon>' +
+          '<mdui-button-icon icon="delete--rounded" onclick="delKey(\'' + k.id + '\',event)" title="删除"></mdui-button-icon>' +
+        '</div>' +
+        '</mdui-card>';
+    }).join('');
+  }).catch(function(e) { mdui.snackbar({ message: e.message }); });
+}
+
+function showDialog() {
+  document.getElementById('fName').value = '';
+  document.getElementById('keyResult').style.display = 'none';
+  document.getElementById('submitBtn').style.display = '';
+  document.getElementById('dlg').open = true;
+}
+
+function closeDialog() { document.getElementById('dlg').open = false; }
+
+function createKey() {
+  api('/api/api-keys', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: document.getElementById('fName').value,
+    }),
+  }).then(function(r) {
+    document.getElementById('keyVal').textContent = r.key;
+    document.getElementById('keyResult').style.display = 'block';
+    document.getElementById('submitBtn').style.display = 'none';
+    mdui.snackbar({ message: '创建成功' });
+    load();
+  }).catch(function(e) { mdui.snackbar({ message: e.message }); });
+}
+
+function toggleKey(id, e) {
+  e.stopPropagation();
+  api('/api/api-keys/' + id + '/toggle', { method: 'PATCH', body: '{}' }).then(load).catch(function(e) { mdui.snackbar({ message: e.message }); });
+}
+
+function delKey(id, e) {
+  e.stopPropagation();
+  mdui.confirm({
+    headline: '确认删除',
+    description: '删除后使用此 Key 的应用将无法发邮件。',
+    confirmText: '删除',
+    cancelText: '取消',
+    onConfirm: function() {
+      api('/api/api-keys/' + id, { method: 'DELETE' }).then(function() {
+        mdui.snackbar({ message: '已删除' });
+        load();
+      }).catch(function(e) { mdui.snackbar({ message: e.message }); });
+    }
+  });
+}
+
+load();
+</script>
+<%- include('../partials/footer') %>

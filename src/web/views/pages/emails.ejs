@@ -1,0 +1,53 @@
+<%- include('../partials/header', { title: '邮件日志'}) %>
+<mdui-select id="statusFilter" value="" variant="filled" style="width:130px;margin-right:8px"><mdui-menu-item value="">全部</mdui-menu-item><mdui-menu-item value="delivered">已送达</mdui-menu-item><mdui-menu-item value="failed">失败</mdui-menu-item><mdui-menu-item value="queued">队列中</mdui-menu-item></mdui-select>
+<div style="max-width:960px;margin:0 auto;padding:16px">
+  <mdui-card variant="filled">
+    <mdui-list id="emailList">
+      <mdui-list-item disabled>加载中...</mdui-list-item>
+    </mdui-list>
+  </mdui-card>
+  <div id="pagination" style="display:flex;justify-content:center;align-items:center;gap:12px;padding:16px 0"></div>
+</div>
+
+
+<%- include('../partials/scripts') %>
+<script>
+if (!requireAuth()) throw 'unauthorized';
+var page = 1;
+var statusMap = { delivered: '已送达', failed: '失败', queued: '队列中', sending: '发送中', cancelled: '已取消' };
+var iconMap = { delivered: 'check_circle', failed: 'error', queued: 'schedule', sending: 'sync', cancelled: 'cancel' };
+var colorMap = { delivered: 'var(--mdui-color-tertiary)', failed: 'var(--mdui-color-error)', queued: 'var(--mdui-color-primary)', sending: 'var(--mdui-color-secondary)', cancelled: 'var(--mdui-color-outline)' };
+
+document.getElementById('statusFilter').addEventListener('change', function() { page = 1; load(); });
+
+function load() {
+  var status = document.getElementById('statusFilter').value;
+  var url = '/api/emails?page=' + page + '&limit=20';
+  if (status) url += '&status=' + status;
+  api(url).then(function(r) {
+    var el = document.getElementById('emailList');
+    if (!r.data.length) {
+      el.innerHTML = '<mdui-list-item disabled>暂无邮件记录</mdui-list-item>';
+      document.getElementById('pagination').innerHTML = '';
+      return;
+    }
+    el.innerHTML = r.data.map(function(e) {
+      var to = Array.isArray(e.to_addresses) ? e.to_addresses.join(', ') : e.to_addresses;
+      return '<mdui-list-item headline="' + esc(e.subject || '(无主题)') + '" description="' + esc(to) + ' · ' + (e.sent_at || e.created_at) + '">' +
+        '<mdui-icon slot="start" name="' + (iconMap[e.status] || 'help') + '--rounded" style="color:' + (colorMap[e.status] || 'var(--mdui-color-primary)') + '"></mdui-icon>' +
+        '<span slot="end-icon" style="font-size:12px;opacity:.6">' + (statusMap[e.status] || e.status) + '</span>' +
+        '</mdui-list-item>';
+    }).join('');
+
+    var pg = document.getElementById('pagination');
+    pg.innerHTML = (r.pagination.page > 1 ? '<mdui-button variant="outlined" onclick="goPage(' + (r.pagination.page - 1) + ')">上一页</mdui-button>' : '') +
+      '<span style="opacity:.6;font-size:13px">' + r.pagination.page + ' / ' + r.pagination.pages + '</span>' +
+      (r.pagination.page < r.pagination.pages ? '<mdui-button variant="outlined" onclick="goPage(' + (r.pagination.page + 1) + ')">下一页</mdui-button>' : '');
+  }).catch(function(e) { mdui.snackbar({ message: e.message }); });
+}
+
+function goPage(p) { page = p; load(); }
+
+load();
+</script>
+<%- include('../partials/footer') %>

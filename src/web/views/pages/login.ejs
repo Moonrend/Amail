@@ -1,0 +1,39 @@
+<%- include('../partials/header', { title: 'Amail', noBar: true, noPadding: true }) %>
+<div style="display:flex;align-items:center;justify-content:center;min-height:100vh">
+  <mdui-card variant="elevated" style="width:100%;max-width:400px;padding:24px">
+    <div style="text-align:center;padding:24px 0 16px">
+      <mdui-icon name="mail--rounded" style="font-size:48px;color:var(--mdui-color-primary)"></mdui-icon>
+      <h1 style="margin:12px 0 4px;font-size:24px;font-weight:500">Amail</h1>
+      <p style="margin:0;font-size:14px;opacity:.7">邮件代理网关</p>
+    </div>
+    <mdui-text-field id="tokenInput" label="Admin Token" type="password" variant="outlined" style="width:100%"></mdui-text-field>
+    <mdui-button id="loginBtn" icon="login" style="width:100%;margin-top:16px">登录</mdui-button>
+  </mdui-card>
+</div>
+<script>
+var input = document.getElementById('tokenInput');
+var btn = document.getElementById('loginBtn');
+
+if (localStorage.getItem('amail_admin_token')) {
+  input.value = localStorage.getItem('amail_admin_token');
+  doLogin();
+}
+
+btn.addEventListener('click', doLogin);
+input.addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
+
+function doLogin() {
+  var token = input.value.trim();
+  if (!token) { mdui.snackbar({ message: '请输入 Admin Token' }); return; }
+  btn.loading = true;
+  fetch('/api/analytics/overview', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(function(res) {
+      if (!res.ok) throw new Error();
+      localStorage.setItem('amail_admin_token', token);
+      window.location.href = '/smtp';
+    })
+    .catch(function() { mdui.snackbar({ message: 'Token 无效' }); })
+    .finally(function() { btn.loading = false; });
+}
+</script>
+<%- include('../partials/footer') %>

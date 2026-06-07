@@ -1,0 +1,61 @@
+<%- include('../partials/header', { title: '数据统计' }) %>
+
+  <!-- Stats -->
+  <mdui-card variant="filled" style="margin-bottom:16px">
+    <mdui-list id="statsList"></mdui-list>
+  </mdui-card>
+
+  <!-- Daily chart -->
+  <mdui-card variant="filled" style="margin-bottom:16px;padding:16px">
+    <h2 style="margin:0 0 12px;font-size:16px;font-weight:500">最近 30 天</h2>
+    <div id="dailyChart"></div>
+  </mdui-card>
+
+  <!-- SMTP usage -->
+  <mdui-card variant="filled" style="padding:16px">
+    <h2 style="margin:0 0 12px;font-size:16px;font-weight:500">SMTP 使用情况</h2>
+    <div id="smtpUsage"></div>
+  </mdui-card>
+
+
+<%- include('../partials/scripts') %>
+<script>
+if (!requireAuth()) throw 'unauthorized';
+
+Promise.all([
+  api('/api/analytics/overview'),
+  api('/api/analytics/daily?days=30'),
+  api('/api/analytics/smtp-usage'),
+]).then(function(r) {
+  var ov = r[0], daily = r[1], usage = r[2];
+
+  // Stats as list items
+  document.getElementById('statsList').innerHTML =
+    '<mdui-list-item icon="send--rounded" headline="' + ov.total_emails + '" description="总发送"></mdui-list-item>' +
+    '<mdui-list-item icon="check_circle--rounded" headline="' + ov.delivered + '" description="已送达"><mdui-icon slot="end-icon" name="check--rounded" style="color:var(--mdui-color-tertiary)"></mdui-icon></mdui-list-item>' +
+    '<mdui-list-item icon="error--rounded" headline="' + ov.failed + '" description="失败"><mdui-icon slot="end-icon" name="close--rounded" style="color:var(--mdui-color-error)"></mdui-icon></mdui-list-item>' +
+    '<mdui-list-item icon="today--rounded" headline="' + ov.today_sent + '" description="今日发送"></mdui-list-item>';
+
+  // Chart
+  var chart = document.getElementById('dailyChart');
+  if (!daily.length) { chart.innerHTML = '<p style="opacity:.5;text-align:center">暂无数据</p>'; return; }
+  var rev = daily.slice().reverse();
+  var max = Math.max.apply(null, rev.map(function(d) { return d.total_sent; }));
+  if (max < 1) max = 1;
+  chart.innerHTML =
+    '<div style="display:flex;align-items:flex-end;gap:3px;height:120px">' + rev.map(function(d) {
+      var h = Math.max(2, (d.total_sent / max) * 100);
+      return '<div style="flex:1;background:var(--mdui-color-primary);border-radius:3px 3px 0 0;height:' + h + '%;min-width:4px;position:relative;cursor:pointer" title="' + d.date + ': ' + d.total_sent + ' 发送"></div>';
+    }).join('') + '</div>' +
+    '<div style="display:flex;gap:3px;margin-top:4px">' + rev.map(function(d) { return '<span style="flex:1;text-align:center;font-size:9px;opacity:.4">' + d.date.slice(5) + '</span>'; }).join('') + '</div>';
+
+  // SMTP usage
+  var ue = document.getElementById('smtpUsage');
+  if (!usage.length) { ue.innerHTML = '<p style="opacity:.5;text-align:center">暂无配置</p>'; return; }
+  ue.innerHTML = '<mdui-list>' + usage.map(function(u) {
+    return '<mdui-list-item headline="' + esc(u.name) + '" description="已发送 ' + u.total_sent + ' 封"></mdui-list-item>';
+  }).join('') + '</mdui-list>';
+
+}).catch(function(e) { mdui.snackbar({ message: e.message }); });
+</script>
+<%- include('../partials/footer') %>

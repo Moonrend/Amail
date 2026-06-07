@@ -1,0 +1,34 @@
+<script>
+var adminToken = localStorage.getItem('amail_admin_token') || '';
+
+function getHeaders(hasBody) {
+  var h = { 'Authorization': 'Bearer ' + adminToken };
+  if (hasBody) h['Content-Type'] = 'application/json';
+  return h;
+}
+
+function api(path, opts) {
+  opts = opts || {};
+  var hasBody = opts.body != null;
+  return fetch(path, Object.assign({ headers: getHeaders(hasBody) }, opts))
+    .then(function(res) {
+      if (!res.ok) return res.json().catch(function() { throw new Error('HTTP ' + res.status); }).then(function(err) { throw new Error(err.message || 'HTTP ' + res.status); });
+      return res.json();
+    });
+}
+
+function esc(s) {
+  if (!s) return '';
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function requireAuth() {
+  if (!adminToken) {
+    window.location.href = '/';
+    return false;
+  }
+  return true;
+}
+</script>
