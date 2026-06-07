@@ -1,5 +1,5 @@
 {
-  "name": "@amail/cli",
+  "name": "@wydev/amail-cli",
   "version": "1.0.0",
   "description": "Amail CLI — send emails from the command line",
   "type": "module",

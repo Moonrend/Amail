@@ -19,7 +19,7 @@ COPY packages/amail/ packages/amail/
 
 # Build
 RUN pnpm --filter @amail/server build
-RUN pnpm --filter amail build
+RUN pnpm --filter @wydev/amail build
 
 # ── Production stage ───────────────────────────────────────────────
 FROM node:20-alpine AS production

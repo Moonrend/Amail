@@ -1,5 +1,5 @@
 {
-  "name": "amail",
+  "name": "@wydev/amail",
   "version": "1.0.0",
   "description": "Official Node.js SDK for Amail — self-hosted email proxy gateway with Resend-compatible API",
   "license": "MIT",

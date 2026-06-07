@@ -5,13 +5,13 @@ Official Node.js SDK for [Amail](https://github.com/ZeroCat/Amail) — self-host
 ## Installation
 
 ```bash
-npm install amail
+npm install @wydev/amail
 ```
 
 ## Quick Start
 
 ```typescript
-import { Amail } from 'amail';
+import { Amail } from '@wydev/amail';
 
 const amail = new Amail('am_your_api_key', {
   baseUrl: 'https://amail.your-domain.com',
@@ -129,7 +129,7 @@ import { Resend } from 'resend';
 const resend = new Resend('re_xxx');
 
 // After
-import { Amail } from 'amail';
+import { Amail } from '@wydev/amail';
 const amail = new Amail('am_xxx', { baseUrl: 'https://amail.your-domain.com' });
 ```
 
