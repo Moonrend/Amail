@@ -170,24 +170,59 @@ curl -X DELETE http://localhost:3000/emails/dReS1gNSsHB9xVqDfNHfP \
 
 ## Docker 部署
 
-```dockerfile
-FROM node:22-slim
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --production
-COPY dist/ ./dist/
-COPY src/web/ ./dist/web/
-VOLUME /app/data
-ENV PORT=3000
-ENV DB_PATH=/app/data/amail.db
-EXPOSE 3000
-CMD ["node", "dist/index.js"]
+### 使用 docker-compose（推荐）
+
+1. 配置环境变量：
+
+```bash
+# 生成加密密钥
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# 创建 .env 文件
+cat > .env << EOF
+ADMIN_TOKEN=your-secure-admin-token
+ENCRYPTION_KEY=<上一步生成的64位hex>
+EOF
 ```
+
+2. 启动服务：
+
+```bash
+docker compose up -d
+```
+
+3. 验证运行：
+
+```bash
+curl http://localhost:3000/health
+# => {"status":"ok","version":"1.0.0"}
+```
+
+4. 打开 `http://localhost:3000` 进入管理界面。
+
+### 使用 docker run
 
 ```bash
 docker build -t amail .
-docker run -p 3000:3000 -v amail-data:/app/data --env-file .env amail
+docker run -d \
+  --name amail \
+  -p 3000:3000 \
+  -v amail-data:/data \
+  -e ADMIN_TOKEN=your-secure-admin-token \
+  -e ENCRYPTION_KEY=your-64-hex-key \
+  amail
 ```
+
+### 环境变量
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `PORT` | 服务端口 | `3000` |
+| `HOST` | 监听地址 | `0.0.0.0` |
+| `ADMIN_TOKEN` | 管理界面 Token | 必填 |
+| `ENCRYPTION_KEY` | SMTP 密码加密密钥 (64位hex) | 必填 |
+| `DB_PATH` | SQLite 数据库路径 | `/data/amail.db` |
+| `LOG_LEVEL` | 日志级别 | `info` |
 
 ## 从 Resend 迁移
 

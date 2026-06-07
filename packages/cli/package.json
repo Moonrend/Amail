@@ -1,0 +1,22 @@
+{
+  "name": "@amail/cli",
+  "version": "1.0.0",
+  "description": "Amail CLI — send emails from the command line",
+  "type": "module",
+  "bin": {
+    "amail": "dist/index.js"
+  },
+  "files": ["dist"],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid'
 import { getDb } from '../db/index.js'
-import { selectSmtpConfig, sendEmail } from '../smtp/manager.js'
+import { selectSmtpConfig, getSmtpConfigById, sendEmail } from '../smtp/manager.js'
 
 export interface SendEmailInput {
   from: string
@@ -21,6 +21,7 @@ export interface SendEmailInput {
     content_id?: string
   }>
   scheduled_at?: string
+  provider?: string
 }
 
 function toArray(val: string | string[] | undefined): string[] {
@@ -55,13 +56,30 @@ export async function processSendEmail(
   const bccAddresses = toArray(input.bcc)
   const replyTo = toArray(input.reply_to)
 
-  // Select SMTP config
+  // Select SMTP config — use explicit provider if given, otherwise auto-select by from address
   const fromParsed = parseFrom(input.from)
-  const smtpConfig = await selectSmtpConfig(fromParsed.address)
+  const smtpConfig = input.provider
+    ? await getSmtpConfigById(input.provider)
+    : await selectSmtpConfig(fromParsed.address)
+
+  // Resolve from address:
+  //   SMTP config from_address set → use "from_name <from_address>"
+  //   SMTP config from_address empty → use client-provided from
+  let fromAddress: string
+  if (smtpConfig.from_address) {
+    fromAddress = smtpConfig.from_name
+      ? `${smtpConfig.from_name} <${smtpConfig.from_address}>`
+      : smtpConfig.from_address
+  } else {
+    fromAddress = input.from || smtpConfig.username || ''
+    if (!fromAddress) {
+      throw new Error('No sender address: provide a "from" field or configure from_address on the SMTP provider')
+    }
+  }
 
   // Build nodemailer options
   const mailOptions: any = {
-    from: input.from,
+    from: fromAddress,
     to: toAddresses.join(', '),
     subject: input.subject,
     html: input.html,
@@ -92,7 +110,7 @@ export async function processSendEmail(
     emailId,
     apiKeyId,
     smtpConfig.id,
-    input.from,
+    fromAddress,
     JSON.stringify(toAddresses),
     JSON.stringify(ccAddresses),
     JSON.stringify(bccAddresses),

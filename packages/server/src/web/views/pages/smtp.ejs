@@ -24,7 +24,6 @@
 <!-- Step 2: Config edit dialog -->
 <mdui-dialog id="dlg" close-on-overlay-click close-on-esc headline="SMTP 配置">
   <div style="display:flex;flex-direction:column;gap:12px">
-    <mdui-text-field id="fName" label="配置名称（即 API ID）" variant="outlined" helper="用于 API 调用的标识符，创建后不可修改"></mdui-text-field>
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px">
       <mdui-text-field id="fHost" label="SMTP 服务器" variant="outlined" placeholder="smtp.gmail.com"></mdui-text-field>
       <div style="position:relative">
@@ -73,7 +72,6 @@
       <mdui-text-field id="fFrom" label="发件地址" variant="outlined" placeholder="noreply@example.com"></mdui-text-field>
       <mdui-text-field id="fFname" label="发件人名称" variant="outlined" helper="留空则使用 API 调用时传入的名称"></mdui-text-field>
     </div>
-    <mdui-text-field id="fPrio" label="优先级" variant="outlined" type="number" value="0" helper="数字越大越优先"></mdui-text-field>
   </div>
   <mdui-button slot="action" variant="text" onclick="closeDialog()">取消</mdui-button>
   <mdui-button slot="action" onclick="saveConfig()">保存</mdui-button>
@@ -322,9 +320,6 @@ function showManualDialog(email, preset) {
   var d = document.getElementById('dlg');
   d.headline = '添加 SMTP 配置';
 
-  var domain = email && email.indexOf('@') > -1 ? email.split('@')[1] : '';
-  document.getElementById('fName').value = (preset && preset.name) || domain || '';
-  document.getElementById('fName').removeAttribute('disabled');
   document.getElementById('fHost').value = (preset && preset.host) || '';
   document.getElementById('fPort').value = (preset && preset.port) || '587';
   document.getElementById('fSecure').value = (preset && preset.secure) ? 'true' : ((preset && preset.secure === false) ? 'false' : 'false');
@@ -337,7 +332,6 @@ function showManualDialog(email, preset) {
   document.getElementById('fTid').value = '';
   document.getElementById('fFrom').value = (preset && preset.from_address) || email || '';
   document.getElementById('fFname').value = '';
-  document.getElementById('fPrio').value = '0';
 
   var ev = new Event('change');
   document.getElementById('fAuth').dispatchEvent(ev);
@@ -347,9 +341,7 @@ function showManualDialog(email, preset) {
 function showDialog(c) {
   editId = (c && c.id) || '';
   var d = document.getElementById('dlg');
-  d.headline = '编辑配置';
-  document.getElementById('fName').value = (c && c.name) || '';
-  document.getElementById('fName').setAttribute('disabled', 'true');
+  d.headline = '编辑配置 · ' + esc(c.id);
   document.getElementById('fHost').value = (c && c.host) || '';
 
   document.getElementById('fPort').value = (c && c.port) || 587;
@@ -363,7 +355,6 @@ function showDialog(c) {
   document.getElementById('fTid').value = (c && c.oauth2_tenant_id) || '';
   document.getElementById('fFrom').value = (c && c.from_address) || '';
   document.getElementById('fFname').value = (c && c.from_name) || '';
-  document.getElementById('fPrio').value = (c && c.priority != null) ? c.priority : 0;
 
   var ev = new Event('change');
   document.getElementById('fAuth').dispatchEvent(ev);
@@ -381,16 +372,16 @@ function getPort() {
   return parseInt(document.getElementById('fPort').value) || 587;
 }
 
-function saveConfig() {
-  var name = document.getElementById('fName').value.trim();
-  if (!name) {
-    mdui.snackbar({ message: '请输入配置名称' });
-    return;
-  }
+function copyId(id, e) {
+  e.stopPropagation();
+  navigator.clipboard.writeText(id).then(function() {
+    mdui.snackbar({ message: '已复制: ' + id });
+  });
+}
 
+function saveConfig() {
   var secureVal = document.getElementById('fSecure').value;
   var body = {
-    name: name,
     host: document.getElementById('fHost').value,
     port: getPort(),
     secure: secureVal === 'true',
@@ -403,7 +394,6 @@ function saveConfig() {
     oauth2_tenant_id: document.getElementById('fTid').value || undefined,
     from_address: document.getElementById('fFrom').value || undefined,
     from_name: document.getElementById('fFname').value || undefined,
-    priority: parseInt(document.getElementById('fPrio').value) || 0,
   };
 
   // Remove secure field if "none"
@@ -443,17 +433,6 @@ function delConfig(id, e) {
       }).catch(function(e) { mdui.snackbar({ message: e.message }); });
     }
   });
-}
-
-function movePriority(id, currentPrio, direction, e) {
-  e.stopPropagation();
-  var newPrio = currentPrio + direction;
-  api('/api/smtp-configs/' + id, {
-    method: 'PUT',
-    body: JSON.stringify({ priority: newPrio })
-  }).then(function() {
-    load();
-  }).catch(function(e) { mdui.snackbar({ message: e.message }); });
 }
 
 var sendConfigId = '';
@@ -518,24 +497,25 @@ function load() {
     }
     grid.innerHTML = list.map(function(c, i) {
       var authLabel = {password:'密码',oauth2:'OAuth2',login:'LOGIN',plain:'PLAIN','cram-md5':'CRAM-MD5','none':'无认证'}[c.auth_type] || c.auth_type;
+      var title = c.username || c.from_address || c.host || c.id;
       return '<mdui-card variant="elevated" style="padding:20px;display:flex;flex-direction:column;gap:12px">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">' +
-          '<div style="font-size:18px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div>' +
+          '<div style="font-size:18px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(title) + '</div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:6px;font-family:monospace;font-size:12px;opacity:.5">' +
+          '<span>ID: ' + esc(c.id) + '</span>' +
+          '<mdui-button-icon icon="content_copy--rounded" style="width:20px;height:20px" onclick="copyId(\'' + esc(c.id) + '\',event)" title="复制 ID"></mdui-button-icon>' +
         '</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
           '<mdui-chip icon="dns--rounded" style="font-size:12px">' + esc(c.host) + ':' + c.port + '</mdui-chip>' +
           '<mdui-chip icon="key--rounded" style="font-size:12px">' + authLabel + '</mdui-chip>' +
-          '<mdui-chip icon="low_priority--rounded" style="font-size:12px">P' + c.priority + '</mdui-chip>' +
         '</div>' +
         (c.from_address ? '<div style="font-size:12px;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">发件：' + esc(c.from_name || '') + ' &lt;' + esc(c.from_address) + '&gt;</div>' : '') +
         '<div style="display:flex;align-items:center;gap:4px;margin-top:auto;padding-top:8px;border-top:1px solid var(--mdui-color-outline-variant)">' +
           '<mdui-button-icon icon="wifi_tethering--rounded" onclick="testConfig(\'' + c.id + '\',event)" title="测试连接"></mdui-button-icon>' +
-          '<mdui-button-icon icon="send--rounded" onclick="showSendDlg(\'' + c.id + '\',\'' + esc(c.name) + '\',\'' + esc(c.from_address || c.username || '') + '\',event)" title="发送测试邮件"></mdui-button-icon>' +
+          '<mdui-button-icon icon="send--rounded" onclick="showSendDlg(\'' + c.id + '\',\'' + esc(title) + '\',\'' + esc(c.from_address || c.username || '') + '\',event)" title="发送测试邮件"></mdui-button-icon>' +
           '<mdui-button-icon icon="edit--rounded" onclick="editConfig(\'' + c.id + '\',event)" title="编辑"></mdui-button-icon>' +
           '<mdui-button-icon icon="delete--rounded" onclick="delConfig(\'' + c.id + '\',event)" title="删除"></mdui-button-icon>' +
-          '<div style="flex-grow:1"></div>' +
-          '<mdui-button-icon icon="arrow_upward--rounded" onclick="movePriority(\'' + c.id + '\',' + c.priority + ',1,event)" title="提高优先级"' + (i === 0 ? ' disabled' : '') + '></mdui-button-icon>' +
-          '<mdui-button-icon icon="arrow_downward--rounded" onclick="movePriority(\'' + c.id + '\',' + c.priority + ',-1,event)" title="降低优先级"' + (i === list.length - 1 ? ' disabled' : '') + '></mdui-button-icon>' +
         '</div>' +
         '</mdui-card>';
     }).join('');

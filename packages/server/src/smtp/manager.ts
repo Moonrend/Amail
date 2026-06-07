@@ -21,7 +21,6 @@ export interface SmtpConfigRow {
   oauth2_tenant_id: string | null
   from_address: string | null
   from_name: string | null
-  priority: number
 }
 
 // Connection pool: configId -> transporter
@@ -124,7 +123,7 @@ export async function selectSmtpConfig(fromAddress: string): Promise<SmtpConfigR
   const matched = db.prepare(`
     SELECT * FROM smtp_configs
     WHERE from_address = ? OR from_address IS NULL
-    ORDER BY priority DESC
+    ORDER BY created_at DESC
     LIMIT 1
   `).get(fromAddress) as SmtpConfigRow | undefined
 
@@ -133,12 +132,24 @@ export async function selectSmtpConfig(fromAddress: string): Promise<SmtpConfigR
   // Fallback to any config
   const fallback = db.prepare(`
     SELECT * FROM smtp_configs
-    ORDER BY priority DESC
+    ORDER BY created_at DESC
     LIMIT 1
   `).get() as SmtpConfigRow | undefined
 
   if (!fallback) throw new Error('No SMTP configuration available. Please add one in the admin panel.')
   return fallback
+}
+
+export async function getSmtpConfigById(id: string): Promise<SmtpConfigRow> {
+  const db = getDb()
+  const config = db.prepare('SELECT * FROM smtp_configs WHERE id = ?').get(id) as SmtpConfigRow | undefined
+  if (!config) throw new Error(`SMTP provider not found: ${id}`)
+  return config
+}
+
+export async function listSmtpConfigs(): Promise<Array<{ id: string; name: string; host: string; from_address: string | null }>> {
+  const db = getDb()
+  return db.prepare('SELECT id, name, host, from_address FROM smtp_configs ORDER BY created_at DESC').all() as any[]
 }
 
 export async function sendEmail(

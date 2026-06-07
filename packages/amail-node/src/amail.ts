@@ -2,8 +2,8 @@ import { Emails } from './emails/emails.js';
 import { Batch } from './batch/batch.js';
 import type { ErrorResponse, Response } from './interfaces.js';
 
-const defaultBaseUrl = 'http://localhost:4000';
-const defaultUserAgent = 'amail-node:1.0.0';
+const defaultBaseUrl = 'http://localhost:3000';
+const defaultUserAgent = 'amail/1.0.0';
 
 export interface AmailOptions {
   baseUrl?: string;

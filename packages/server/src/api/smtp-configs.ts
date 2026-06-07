@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { authenticateAdmin } from '../auth/middleware.js'
 import { getDb } from '../db/index.js'
@@ -6,12 +7,13 @@ import { encrypt, decrypt } from '../crypto.js'
 import { testSmtpConnection, invalidateTransporter, sendEmail } from '../smtp/manager.js'
 import { discoverSmtpConfig } from '../smtp/autoconfig.js'
 
-function escHtml(s: string): string {
+function escHtml(s: string | null | undefined): string {
+  if (!s) return ''
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 const smtpConfigSchema = z.object({
-  name: z.string().min(1).max(100),
+  name: z.string().max(100).optional(),
   host: z.string().min(1),
   port: z.number().int().min(1).max(65535),
   secure: z.boolean().default(false),
@@ -24,7 +26,6 @@ const smtpConfigSchema = z.object({
   oauth2_tenant_id: z.string().optional(),
   from_address: z.string().optional(),
   from_name: z.string().optional(),
-  priority: z.number().int().default(0),
 })
 
 const smtpConfigUpdateSchema = smtpConfigSchema.omit({ name: true }).partial()
@@ -80,7 +81,7 @@ export async function smtpConfigRoutes(app: FastifyInstance): Promise<void> {
     if (!(await authenticateAdmin(request, reply))) return
 
     const db = getDb()
-    const rows = db.prepare('SELECT * FROM smtp_configs ORDER BY priority DESC, created_at DESC').all()
+    const rows = db.prepare('SELECT * FROM smtp_configs ORDER BY created_at DESC').all()
     return reply.send(rows.map(decryptSensitiveFields))
   })
 
@@ -93,28 +94,21 @@ export async function smtpConfigRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: parsed.error.issues })
     }
 
+    const id = nanoid()
     const db = getDb()
-
-    // Check name uniqueness (id = name)
-    const existing = db.prepare('SELECT id FROM smtp_configs WHERE id = ?').get(parsed.data.name)
-    if (existing) {
-      return reply.code(409).send({ error: `配置名称「${parsed.data.name}」已存在` })
-    }
-
-    const id = parsed.data.name
     const encrypted = encryptSensitiveFields(parsed.data)
 
     db.prepare(`
       INSERT INTO smtp_configs (id, name, host, port, secure, auth_type, username,
         password_encrypted, oauth2_client_id, oauth2_client_secret_encrypted,
-        oauth2_refresh_token_encrypted, oauth2_tenant_id, from_address, from_name, priority)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        oauth2_refresh_token_encrypted, oauth2_tenant_id, from_address, from_name)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      id, encrypted.name, encrypted.host, encrypted.port, encrypted.secure ? 1 : 0,
+      id, encrypted.name || null, encrypted.host, encrypted.port, encrypted.secure ? 1 : 0,
       encrypted.auth_type, encrypted.username || null, encrypted.password_encrypted || null,
       encrypted.oauth2_client_id || null, encrypted.oauth2_client_secret_encrypted || null,
       encrypted.oauth2_refresh_token_encrypted || null, encrypted.oauth2_tenant_id || null,
-      encrypted.from_address || null, encrypted.from_name || null, encrypted.priority,
+      encrypted.from_address || null, encrypted.from_name || null,
     )
 
     const row = db.prepare('SELECT * FROM smtp_configs WHERE id = ?').get(id)

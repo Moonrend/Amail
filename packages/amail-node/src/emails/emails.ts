@@ -18,6 +18,10 @@ import type {
   CancelEmailResponse,
   CancelEmailResponseSuccess,
 } from './interfaces/cancel-email-options.interface.js';
+import type {
+  ListProvidersResponse,
+  ListProvidersResponseSuccess,
+} from './interfaces/list-providers.interface.js';
 
 function parseEmailToApiOptions(email: CreateEmailOptions) {
   return {
@@ -39,6 +43,7 @@ function parseEmailToApiOptions(email: CreateEmailOptions) {
       content_id: a.contentId,
     })),
     scheduled_at: email.scheduledAt,
+    provider: email.provider,
   };
 }
 
@@ -104,6 +109,16 @@ export class Emails {
   async cancel(id: string): Promise<CancelEmailResponse> {
     const data = await this.amail.post<CancelEmailResponseSuccess>(
       `/emails/${id}/cancel`,
+    );
+    return data;
+  }
+
+  /**
+   * List available SMTP providers.
+   */
+  async providers(): Promise<ListProvidersResponse> {
+    const data = await this.amail.get<ListProvidersResponseSuccess>(
+      '/emails/providers',
     );
     return data;
   }

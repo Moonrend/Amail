@@ -2,10 +2,11 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { authenticateApi } from '../auth/middleware.js'
 import { processSendEmail, type SendEmailInput } from '../services/email-sender.js'
+import { listSmtpConfigs } from '../smtp/manager.js'
 import { getDb } from '../db/index.js'
 
 const sendEmailSchema = z.object({
-  from: z.string().min(1),
+  from: z.string().optional(),
   to: z.union([z.string(), z.array(z.string()).max(50)]),
   subject: z.string().min(1),
   html: z.string().optional(),
@@ -23,6 +24,7 @@ const sendEmailSchema = z.object({
     content_id: z.string().optional(),
   })).optional(),
   scheduled_at: z.string().optional(),
+  provider: z.string().optional(),
 })
 
 const batchEmailSchema = z.array(sendEmailSchema).max(100)
@@ -91,7 +93,7 @@ export async function emailRoutes(app: FastifyInstance): Promise<void> {
 
     const db = getDb()
     const email = db.prepare(`
-      SELECT id, from_address as "from", to_addresses as "to", subject, html, text,
+      SELECT id, from_address as "from", to_addresses as "to", subject,
         cc_addresses as cc, bcc_addresses as bcc, tags, headers, status,
         error_message as last_error, message_id, scheduled_at, created_at, sent_at
       FROM email_logs WHERE id = ?
@@ -199,6 +201,31 @@ export async function emailRoutes(app: FastifyInstance): Promise<void> {
       data,
       ...(hasMore ? { has_more: true } : {}),
     })
+  })
+
+  // GET /emails/providers — List available SMTP providers (for client use)
+  app.get('/emails/providers', async (request, reply) => {
+    const apiKey = await authenticateApi(request, reply)
+    if (!apiKey) return
+
+    try {
+      const configs = await listSmtpConfigs()
+      return reply.send({
+        data: configs.map(c => ({
+          id: c.id,
+          name: c.name,
+          host: c.host,
+          from_address: c.from_address,
+        })),
+      })
+    } catch (err: any) {
+      request.log.error(err, 'Failed to list providers')
+      return reply.code(500).send({
+        statusCode: 500,
+        name: 'application_error',
+        message: err.message || 'Internal server error',
+      })
+    }
   })
 
   // DELETE /emails/:id — Cancel a scheduled email (backward compat)

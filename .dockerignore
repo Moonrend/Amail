@@ -1,0 +1,14 @@
+node_modules
+dist
+data
+.env
+.git
+.github
+.claude
+packages/cli
+packages/amail/dist
+packages/server/dist
+resend-node-canary
+*.md
+1.js
+*.tgz

@@ -26,6 +26,7 @@ function parseEmailToApiOptions(email: any) {
       content_id: a.contentId,
     })),
     scheduled_at: email.scheduledAt,
+    provider: email.provider,
   };
 }
 

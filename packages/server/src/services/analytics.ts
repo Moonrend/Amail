@@ -71,6 +71,6 @@ export function getSmtpUsage(): Array<{ id: string; name: string; total_sent: nu
     FROM smtp_configs s
     LEFT JOIN email_logs e ON e.smtp_config_id = s.id AND e.status = 'delivered'
     GROUP BY s.id
-    ORDER BY s.priority DESC
+    ORDER BY s.created_at DESC
   `).all() as any[]
 }

@@ -1,22 +1,25 @@
 import type Database from 'better-sqlite3'
 
 export function runMigrations(db: Database.Database): void {
-  // Check if old smtp_configs table exists (with is_active column)
+  // Check if old smtp_configs table exists
   const oldTable = db.prepare(`
     SELECT name FROM sqlite_master WHERE type='table' AND name='smtp_configs'
   `).get() as { name: string } | undefined
 
-  const hasOldSchema = oldTable && (() => {
-    const columns = db.prepare(`PRAGMA table_info(smtp_configs)`).all() as any[]
-    return columns.some(c => c.name === 'is_active')
-  })()
+  const columns = oldTable
+    ? (db.prepare(`PRAGMA table_info(smtp_configs)`).all() as any[])
+    : []
 
-  if (hasOldSchema) {
+  const hasOldSchema = oldTable && columns.some(c => c.name === 'is_active')
+  const nameIsNotNull = oldTable && columns.some(c => c.name === 'name' && c.notnull === 1)
+  const needRecreate = oldTable && (hasOldSchema || nameIsNotNull)
+
+  if (needRecreate) {
     // Migrate from old schema to new schema
     db.exec(`
       CREATE TABLE IF NOT EXISTS smtp_configs_new (
         id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
+        name TEXT,
         host TEXT NOT NULL,
         port INTEGER NOT NULL DEFAULT 587,
         secure INTEGER NOT NULL DEFAULT 0,
@@ -55,13 +58,13 @@ export function runMigrations(db: Database.Database): void {
 
     // Update email_logs smtp_config_id references if possible
     // (Old IDs were nanoid, new IDs are names — best effort mapping)
-    console.log('[migrations] Migrated smtp_configs: id now equals name')
+    console.log('[migrations] Migrated smtp_configs: name column now nullable')
   } else if (!oldTable) {
     // Fresh install — create table with new schema
     db.exec(`
       CREATE TABLE IF NOT EXISTS smtp_configs (
         id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
+        name TEXT,
         host TEXT NOT NULL,
         port INTEGER NOT NULL DEFAULT 587,
         secure INTEGER NOT NULL DEFAULT 0,
