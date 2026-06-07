@@ -6,7 +6,11 @@
     "dev": "pnpm --filter @amail/server dev",
     "build": "pnpm -r build",
     "start": "pnpm --filter @amail/server start",
-    "cli": "node packages/cli/dist/index.js"
+    "cli": "node packages/cli/dist/index.js",
+    "release": "node scripts/release.js",
+    "release:patch": "node scripts/release.js patch",
+    "release:minor": "node scripts/release.js minor",
+    "release:major": "node scripts/release.js major"
   },
   "engines": {
     "node": ">=18"
