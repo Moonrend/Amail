@@ -12,7 +12,7 @@ import { join } from 'path';
 
 const ROOT = join(import.meta.dirname, '..');
 const PACKAGES = [
-  'packages/amail-node/package.json',
+  'packages/amail/package.json',
   'packages/cli/package.json',
 ];
 
