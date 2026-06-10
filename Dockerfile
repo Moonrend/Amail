@@ -9,6 +9,7 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/server/package.json packages/server/
 COPY packages/amail/package.json packages/amail/
+COPY packages/cli/package.json packages/cli/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile || pnpm install
@@ -32,6 +33,7 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/server/package.json packages/server/
 COPY packages/amail/package.json packages/amail/
+COPY packages/cli/package.json packages/cli/
 
 # Install production dependencies only
 RUN pnpm install --frozen-lockfile --prod || pnpm install --prod
