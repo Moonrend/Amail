@@ -5,7 +5,8 @@ data
 .git
 .github
 .claude
-packages/cli
+packages/cli/*
+!packages/cli/package.json
 packages/amail/dist
 packages/server/dist
 resend-node-canary

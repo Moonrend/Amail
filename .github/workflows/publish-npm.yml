@@ -35,7 +35,7 @@ jobs:
         run: pnpm -r build
 
       - name: Publish @wydev/amail
-        run: cd packages/amail-node && npm publish --provenance --access public
+        run: cd packages/amail && npm publish --provenance --access public
 
       - name: Publish @wydev/amail-cli
         run: cd packages/cli && npm publish --provenance --access public

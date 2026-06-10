@@ -32,7 +32,7 @@ jobs:
         run: pnpm -r build
 
       - name: Verify npm pack (amail)
-        run: cd packages/amail-node && npm pack --dry-run
+        run: cd packages/amail && npm pack --dry-run
 
       - name: Verify npm pack (@amail/cli)
         run: cd packages/cli && npm pack --dry-run
