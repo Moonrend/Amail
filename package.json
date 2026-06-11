@@ -2,17 +2,19 @@
   "name": "amail-monorepo",
   "private": true,
   "description": "Amail — self-hosted email proxy gateway",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "pnpm --filter @amail/server dev",
-    "build": "pnpm -r build",
-    "start": "pnpm --filter @amail/server start",
+    "dev": "npm --workspace=@amail/server run dev",
+    "build": "npm run build --workspaces --if-present",
+    "start": "npm --workspace=@amail/server run start",
     "cli": "node packages/cli/dist/index.js",
     "release": "node scripts/release.js",
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
     "release:major": "node scripts/release.js major"
   },
-  "packageManager": "pnpm@9.15.4",
   "engines": {
     "node": ">=18"
   },

@@ -6,21 +6,20 @@ RUN corepack enable
 WORKDIR /app
 
 # Copy workspace root
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+COPY package.json package-lock.json ./
 COPY packages/server/package.json packages/server/
 COPY packages/amail/package.json packages/amail/
 COPY packages/cli/package.json packages/cli/
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile || pnpm install
+RUN npm ci
 
 # Copy source
 COPY packages/server/ packages/server/
 COPY packages/amail/ packages/amail/
 
 # Build
-RUN pnpm --filter @amail/server build
-RUN pnpm --filter @wydev/amail build
+RUN npm run build --workspaces --if-present
 
 # ── Production stage ───────────────────────────────────────────────
 FROM node:20-alpine AS production
@@ -30,13 +29,13 @@ RUN corepack enable
 WORKDIR /app
 
 # Copy workspace root
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+COPY package.json package-lock.json ./
 COPY packages/server/package.json packages/server/
 COPY packages/amail/package.json packages/amail/
 COPY packages/cli/package.json packages/cli/
 
 # Install production dependencies only
-RUN pnpm install --frozen-lockfile --prod || pnpm install --prod
+RUN npm ci --omit=dev
 
 # Copy built files
 COPY --from=builder /app/packages/server/dist packages/server/dist
