@@ -341,7 +341,7 @@ function showManualDialog(email, preset) {
 function showDialog(c) {
   editId = (c && c.id) || '';
   var d = document.getElementById('dlg');
-  d.headline = '编辑配置 · ' + esc(c.id);
+  d.headline = esc(c.id);
   document.getElementById('fHost').value = (c && c.host) || '';
 
   document.getElementById('fPort').value = (c && c.port) || 587;

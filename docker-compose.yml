@@ -1,6 +1,6 @@
 services:
   amail:
-    build: .
+    image: sunwuyuan/amail:main
     container_name: amail
     restart: unless-stopped
     ports:
@@ -12,7 +12,7 @@ services:
       - HOST=0.0.0.0
       - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-to-a-secure-random-string}
       - DB_PATH=/data/amail.db
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-8c7cdf448f207ed5f52ff43e0e91bf44c9181e4e1f21e77008e82a1b066c2ad4}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]

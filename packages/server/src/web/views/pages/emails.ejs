@@ -1,48 +1,157 @@
 <%- include('../partials/header', { title: '邮件日志'}) %>
-<mdui-select id="statusFilter" value="" variant="filled" style="width:130px;margin-right:8px"><mdui-menu-item value="">全部</mdui-menu-item><mdui-menu-item value="delivered">已送达</mdui-menu-item><mdui-menu-item value="failed">失败</mdui-menu-item><mdui-menu-item value="queued">队列中</mdui-menu-item></mdui-select>
-<div style="max-width:960px;margin:0 auto;padding:16px">
-  <mdui-card variant="filled">
-    <mdui-list id="emailList">
-      <mdui-list-item disabled>加载中...</mdui-list-item>
-    </mdui-list>
-  </mdui-card>
-  <div id="pagination" style="display:flex;justify-content:center;align-items:center;gap:12px;padding:16px 0"></div>
+
+<style>
+  .log-toolbar { display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  .log-table-wrap { overflow-x:auto; border-radius:12px; background:var(--mdui-color-surface-container-low); }
+  .log-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .log-table th { text-align:left; padding:10px 12px; font-weight:500; font-size:12px; opacity:.6; border-bottom:1px solid var(--mdui-color-outline-variant); white-space:nowrap; position:sticky; top:0; background:var(--mdui-color-surface-container-low); }
+  .log-table td { padding:8px 12px; border-bottom:1px solid var(--mdui-color-surface-container-highest); vertical-align:middle; }
+  .log-table tr:last-child td { border-bottom:none; }
+  .log-table tr:hover td { background:var(--mdui-color-surface-container-highest); }
+  .status-badge { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:500; white-space:nowrap; }
+  .status-delivered { background:rgba(52,168,83,.15); color:#81c995; }
+  .status-failed { background:rgba(234,67,53,.15); color:#f07b72; }
+  .status-queued { background:rgba(66,133,244,.15); color:#7baaf7; }
+  .status-sending { background:rgba(251,188,4,.15); color:#fcd04f; }
+  .status-cancelled { background:rgba(255,255,255,.08); color:rgba(255,255,255,.5); }
+  .truncate { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block; vertical-align:middle; }
+  .truncate-wide { max-width:240px; }
+  .tag { display:inline-block; padding:1px 6px; border-radius:4px; font-size:10px; background:var(--mdui-color-surface-container-highest); opacity:.7; }
+  .error-text { color:var(--mdui-color-error); font-size:11px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; }
+</style>
+
+<div class="log-toolbar">
+  <mdui-select id="statusFilter" value="" variant="filled" style="width:130px">
+    <mdui-menu-item value="">全部状态</mdui-menu-item>
+    <mdui-menu-item value="delivered">已送达</mdui-menu-item>
+    <mdui-menu-item value="failed">失败</mdui-menu-item>
+    <mdui-menu-item value="queued">队列中</mdui-menu-item>
+    <mdui-menu-item value="sending">发送中</mdui-menu-item>
+    <mdui-menu-item value="cancelled">已取消</mdui-menu-item>
+  </mdui-select>
+  <mdui-select id="keyFilter" value="" variant="outlined" style="min-width:160px">
+    <mdui-menu-item value="">全部 Key</mdui-menu-item>
+  </mdui-select>
+  <div style="flex:1"></div>
+  <mdui-button icon="delete_sweep--rounded" variant="tonal" id="clearLogsBtn">清除日志</mdui-button>
 </div>
 
+<div class="log-table-wrap">
+  <table class="log-table">
+    <thead>
+      <tr>
+        <th style="width:40px"></th>
+        <th>主题</th>
+        <th>发件人</th>
+        <th>收件人</th>
+        <th>Provider</th>
+        <th>API Key</th>
+        <th>附件</th>
+        <th>状态</th>
+        <th>错误信息</th>
+        <th>时间</th>
+      </tr>
+    </thead>
+    <tbody id="emailTableBody">
+      <tr><td colspan="10" style="text-align:center;padding:32px;opacity:.5">加载中...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div id="pagination" style="display:flex;justify-content:center;align-items:center;gap:12px;padding:16px 0"></div>
 
 <%- include('../partials/scripts') %>
 <script>
 if (!requireAuth()) throw 'unauthorized';
 var page = 1;
-var statusMap = { delivered: '已送达', failed: '失败', queued: '队列中', sending: '发送中', cancelled: '已取消' };
-var iconMap = { delivered: 'check_circle', failed: 'error', queued: 'schedule', sending: 'sync', cancelled: 'cancel' };
-var colorMap = { delivered: 'var(--mdui-color-tertiary)', failed: 'var(--mdui-color-error)', queued: 'var(--mdui-color-primary)', sending: 'var(--mdui-color-secondary)', cancelled: 'var(--mdui-color-outline)' };
+
+var statusConfig = {
+  delivered:  { label:'已送达', cls:'status-delivered', icon:'check_circle' },
+  failed:     { label:'失败',   cls:'status-failed',    icon:'error' },
+  queued:     { label:'队列中', cls:'status-queued',    icon:'schedule' },
+  sending:    { label:'发送中', cls:'status-sending',   icon:'sync' },
+  cancelled:  { label:'已取消', cls:'status-cancelled', icon:'cancel' },
+};
+
+// Load key filter options
+api('/api/analytics/key-usage').then(function(keys) {
+  var el = document.getElementById('keyFilter');
+  keys.forEach(function(k) {
+    var opt = document.createElement('mdui-menu-item');
+    opt.value = k.id;
+    opt.textContent = k.name + ' (' + k.key_prefix + ')';
+    el.appendChild(opt);
+  });
+});
 
 document.getElementById('statusFilter').addEventListener('change', function() { page = 1; load(); });
+document.getElementById('keyFilter').addEventListener('change', function() { page = 1; load(); });
+
+document.getElementById('clearLogsBtn').addEventListener('click', function() {
+  mdui.confirm('确定要清除所有邮件日志吗？此操作不可撤销。', '清除日志', function() {
+    api('/api/analytics/logs', { method: 'DELETE' }).then(function() {
+      mdui.snackbar({ message: '日志已清除' });
+      page = 1; load();
+    }).catch(function(e) { mdui.snackbar({ message: e.message }); });
+  }, function() {}, { confirmText: '确认清除', cancelText: '取消', destructive: true });
+});
+
+function formatTime(ts) {
+  if (!ts) return '—';
+  var d = new Date(ts);
+  var pad = function(n) { return n < 10 ? '0' + n : n; };
+  return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
 
 function load() {
   var status = document.getElementById('statusFilter').value;
-  var url = '/api/emails?page=' + page + '&limit=20';
+  var keyId = document.getElementById('keyFilter').value;
+  var url = '/api/emails?page=' + page + '&limit=30';
   if (status) url += '&status=' + status;
+  if (keyId) url += '&api_key_id=' + keyId;
+
   api(url).then(function(r) {
-    var el = document.getElementById('emailList');
+    var tbody = document.getElementById('emailTableBody');
+
     if (!r.data.length) {
-      el.innerHTML = '<mdui-list-item disabled>暂无邮件记录</mdui-list-item>';
+      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:32px;opacity:.5">暂无邮件记录</td></tr>';
       document.getElementById('pagination').innerHTML = '';
       return;
     }
-    el.innerHTML = r.data.map(function(e) {
-      var to = Array.isArray(e.to_addresses) ? e.to_addresses.join(', ') : e.to_addresses;
-      return '<mdui-list-item headline="' + esc(e.subject || '(无主题)') + '" description="' + esc(to) + ' · ' + (e.sent_at || e.created_at) + '">' +
-        '<mdui-icon slot="start" name="' + (iconMap[e.status] || 'help') + '--rounded" style="color:' + (colorMap[e.status] || 'var(--mdui-color-primary)') + '"></mdui-icon>' +
-        '<span slot="end-icon" style="font-size:12px;opacity:.6">' + (statusMap[e.status] || e.status) + '</span>' +
-        '</mdui-list-item>';
+
+    tbody.innerHTML = r.data.map(function(e) {
+      var sc = statusConfig[e.status] || { label: e.status, cls: '', icon: 'help' };
+      var to = Array.isArray(e.to_addresses) ? e.to_addresses.join(', ') : (e.to_addresses || '');
+      var tags = [];
+      if (e.has_html) tags.push('HTML');
+      if (e.has_text) tags.push('Text');
+      var attachTag = e.has_attachments ? ('<span class="tag">' + e.attachment_count + ' 个</span>') : '<span style="opacity:.3">—</span>';
+      var errorTd = e.error_message ? '<td><span class="error-text" title="' + esc(e.error_message) + '">' + esc(e.error_message) + '</span></td>' : '<td style="opacity:.2">—</td>';
+
+      return '<tr>' +
+        '<td><mdui-icon name="' + sc.icon + '--rounded" style="color:' + (sc.cls ? '' : 'var(--mdui-color-outline)') + ';font-size:18px;' + (sc.cls ? '' : '') + '"></mdui-icon></td>' +
+        '<td><span class="truncate truncate-wide" title="' + esc(e.subject) + '">' + esc(e.subject || '(无主题)') + '</span>' +
+          (tags.length ? '<div style="margin-top:2px">' + tags.map(function(t) { return '<span class="tag">' + t + '</span>'; }).join(' ') + '</div>' : '') + '</td>' +
+        '<td><span class="truncate" title="' + esc(e.from_address) + '">' + esc(e.from_address) + '</span></td>' +
+        '<td><span class="truncate" title="' + esc(to) + '">' + esc(to) + '</span></td>' +
+        '<td><span class="truncate" title="' + esc(e.provider_name || e.smtp_config_id || '') + '">' + esc(e.provider_name || '—') + '</span></td>' +
+        '<td><span class="truncate" title="' + esc(e.key_name || e.api_key_id || '') + '">' + esc(e.key_name || '—') + '</span>' +
+          (e.key_prefix ? '<div style="font-size:10px;opacity:.4">' + esc(e.key_prefix) + '</div>' : '') + '</td>' +
+        '<td>' + attachTag + '</td>' +
+        '<td><span class="status-badge ' + sc.cls + '">' + sc.label + '</span></td>' +
+        errorTd +
+        '<td style="white-space:nowrap;font-size:12px;opacity:.7">' + formatTime(e.sent_at || e.created_at) + '</td>' +
+      '</tr>';
     }).join('');
 
-    var pg = document.getElementById('pagination');
-    pg.innerHTML = (r.pagination.page > 1 ? '<mdui-button variant="outlined" onclick="goPage(' + (r.pagination.page - 1) + ')">上一页</mdui-button>' : '') +
-      '<span style="opacity:.6;font-size:13px">' + r.pagination.page + ' / ' + r.pagination.pages + '</span>' +
-      (r.pagination.page < r.pagination.pages ? '<mdui-button variant="outlined" onclick="goPage(' + (r.pagination.page + 1) + ')">下一页</mdui-button>' : '');
+    // Pagination
+    var pg = r.pagination;
+    var pgHtml = '';
+    if (pg.page > 1) pgHtml += '<mdui-button variant="text" onclick="goPage(' + (pg.page - 1) + ')">上一页</mdui-button>';
+    pgHtml += '<span style="opacity:.6;font-size:13px">第 ' + pg.page + ' / ' + pg.pages + ' 页 · 共 ' + pg.total + ' 条</span>';
+    if (pg.page < pg.pages) pgHtml += '<mdui-button variant="text" onclick="goPage(' + (pg.page + 1) + ')">下一页</mdui-button>';
+    document.getElementById('pagination').innerHTML = pgHtml;
+
   }).catch(function(e) { mdui.snackbar({ message: e.message }); });
 }
 

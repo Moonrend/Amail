@@ -1,61 +1,248 @@
 <%- include('../partials/header', { title: '数据统计' }) %>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 
-  <!-- Stats -->
-  <mdui-card variant="filled" style="margin-bottom:16px">
-    <mdui-list id="statsList"></mdui-list>
-  </mdui-card>
+<style>
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat-card { background: var(--mdui-color-surface-container-low); border-radius: 12px; padding: 16px; text-align: center; }
+  .stat-card .value { font-size: 28px; font-weight: 600; line-height: 1.2; }
+  .stat-card .label { font-size: 12px; opacity: .6; margin-top: 4px; }
+  .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 720px) { .chart-row { grid-template-columns: 1fr; } }
+  .chart-card { background: var(--mdui-color-surface-container-low); border-radius: 12px; padding: 16px; }
+  .chart-card h2 { margin: 0 0 12px; font-size: 15px; font-weight: 500; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+</style>
 
-  <!-- Daily chart -->
-  <mdui-card variant="filled" style="margin-bottom:16px;padding:16px">
-    <h2 style="margin:0 0 12px;font-size:16px;font-weight:500">最近 30 天</h2>
-    <div id="dailyChart"></div>
-  </mdui-card>
+<!-- Stats overview -->
+<div class="stat-grid" id="statsGrid"></div>
 
-  <!-- SMTP usage -->
-  <mdui-card variant="filled" style="padding:16px">
-    <h2 style="margin:0 0 12px;font-size:16px;font-weight:500">SMTP 使用情况</h2>
-    <div id="smtpUsage"></div>
-  </mdui-card>
+<!-- Toolbar: days selector + filters -->
+<mdui-card variant="filled" style="margin-bottom:16px;padding:16px">
+  <div class="toolbar">
+    <mdui-segmented-button-group id="daysGroup" value="30" selects="single">
+      <mdui-segmented-button value="7">7 天</mdui-segmented-button>
+      <mdui-segmented-button value="30" selected>30 天</mdui-segmented-button>
+      <mdui-segmented-button value="90">90 天</mdui-segmented-button>
+    </mdui-segmented-button-group>
+    <mdui-select id="providerFilter" placeholder="全部 Provider" variant="outlined" style="min-width:160px"></mdui-select>
+    <mdui-select id="keyFilter" placeholder="全部 Key" variant="outlined" style="min-width:160px"></mdui-select>
+  </div>
+  <canvas id="lineChart" height="90"></canvas>
+</mdui-card>
 
+<!-- Provider + Key charts -->
+<div class="chart-row">
+  <div class="chart-card">
+    <h2>Provider 发件分布</h2>
+    <canvas id="providerChart" height="180"></canvas>
+  </div>
+  <div class="chart-card">
+    <h2>API Key 用量</h2>
+    <canvas id="keyChart" height="180"></canvas>
+  </div>
+</div>
+
+<!-- Provider success rate + Recipient stats -->
+<div class="chart-row">
+  <div class="chart-card">
+    <h2>Provider 成功率</h2>
+    <div id="providerRate"></div>
+  </div>
+  <div class="chart-card">
+    <h2>收件域名 Top 20</h2>
+    <div id="recipientStats"></div>
+  </div>
+</div>
 
 <%- include('../partials/scripts') %>
 <script>
 if (!requireAuth()) throw 'unauthorized';
 
-Promise.all([
-  api('/api/analytics/overview'),
-  api('/api/analytics/daily?days=30'),
-  api('/api/analytics/smtp-usage'),
-]).then(function(r) {
-  var ov = r[0], daily = r[1], usage = r[2];
+var lineChartInstance = null;
+var providerChartInstance = null;
+var keyChartInstance = null;
 
-  // Stats as list items
-  document.getElementById('statsList').innerHTML =
-    '<mdui-list-item icon="send--rounded" headline="' + ov.total_emails + '" description="总发送"></mdui-list-item>' +
-    '<mdui-list-item icon="check_circle--rounded" headline="' + ov.delivered + '" description="已送达"><mdui-icon slot="end-icon" name="check--rounded" style="color:var(--mdui-color-tertiary)"></mdui-icon></mdui-list-item>' +
-    '<mdui-list-item icon="error--rounded" headline="' + ov.failed + '" description="失败"><mdui-icon slot="end-icon" name="close--rounded" style="color:var(--mdui-color-error)"></mdui-icon></mdui-list-item>' +
-    '<mdui-list-item icon="today--rounded" headline="' + ov.today_sent + '" description="今日发送"></mdui-list-item>';
+var COLORS = [
+  '#4285f4','#ea4335','#fbbc04','#34a853','#ff6d01',
+  '#46bdc6','#7baaf7','#f07b72','#fcd04f','#81c995',
+];
 
-  // Chart
-  var chart = document.getElementById('dailyChart');
-  if (!daily.length) { chart.innerHTML = '<p style="opacity:.5;text-align:center">暂无数据</p>'; return; }
-  var rev = daily.slice().reverse();
-  var max = Math.max.apply(null, rev.map(function(d) { return d.total_sent; }));
-  if (max < 1) max = 1;
-  chart.innerHTML =
-    '<div style="display:flex;align-items:flex-end;gap:3px;height:120px">' + rev.map(function(d) {
-      var h = Math.max(2, (d.total_sent / max) * 100);
-      return '<div style="flex:1;background:var(--mdui-color-primary);border-radius:3px 3px 0 0;height:' + h + '%;min-width:4px;position:relative;cursor:pointer" title="' + d.date + ': ' + d.total_sent + ' 发送"></div>';
-    }).join('') + '</div>' +
-    '<div style="display:flex;gap:3px;margin-top:4px">' + rev.map(function(d) { return '<span style="flex:1;text-align:center;font-size:9px;opacity:.4">' + d.date.slice(5) + '</span>'; }).join('') + '</div>';
+function rateColor(rate) {
+  if (rate >= 95) return 'var(--mdui-color-tertiary)';
+  if (rate >= 80) return 'var(--mdui-color-primary)';
+  return 'var(--mdui-color-error)';
+}
 
-  // SMTP usage
-  var ue = document.getElementById('smtpUsage');
-  if (!usage.length) { ue.innerHTML = '<p style="opacity:.5;text-align:center">暂无配置</p>'; return; }
-  ue.innerHTML = '<mdui-list>' + usage.map(function(u) {
-    return '<mdui-list-item headline="' + esc(u.name) + '" description="已发送 ' + u.total_sent + ' 封"></mdui-list-item>';
-  }).join('') + '</mdui-list>';
+// Overview stats
+function loadOverview() {
+  api('/api/analytics/overview').then(function(ov) {
+    var rate = ov.total_emails > 0 ? ((ov.delivered / ov.total_emails) * 100).toFixed(1) : '—';
+    document.getElementById('statsGrid').innerHTML =
+      '<div class="stat-card"><div class="value">' + ov.total_emails + '</div><div class="label">总发送</div></div>' +
+      '<div class="stat-card"><div class="value" style="color:var(--mdui-color-tertiary)">' + ov.delivered + '</div><div class="label">已送达</div></div>' +
+      '<div class="stat-card"><div class="value" style="color:var(--mdui-color-error)">' + ov.failed + '</div><div class="label">失败</div></div>' +
+      '<div class="stat-card"><div class="value">' + ov.today_sent + '</div><div class="label">今日发送</div></div>' +
+      '<div class="stat-card"><div class="value">' + rate + '%</div><div class="label">成功率</div></div>';
+  });
+}
 
-}).catch(function(e) { mdui.snackbar({ message: e.message }); });
+// Line chart
+function loadLineChart() {
+  var days = document.getElementById('daysGroup').value || '30';
+  var url = '/api/analytics/daily?days=' + days;
+  var providerVal = document.getElementById('providerFilter').value;
+  var keyVal = document.getElementById('keyFilter').value;
+  if (providerVal) url += '&smtp_config_id=' + providerVal;
+  if (keyVal) url += '&api_key_id=' + keyVal;
+
+  api(url).then(function(daily) {
+    var rev = daily.slice().reverse();
+    var labels = rev.map(function(d) { return d.date.slice(5); });
+    var sent = rev.map(function(d) { return d.total_sent; });
+    var delivered = rev.map(function(d) { return d.total_delivered; });
+    var failed = rev.map(function(d) { return d.total_failed; });
+
+    if (lineChartInstance) lineChartInstance.destroy();
+    lineChartInstance = new Chart(document.getElementById('lineChart'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: '发送', data: sent, borderColor: '#4285f4', backgroundColor: 'rgba(66,133,244,.1)', fill: true, tension: .3, pointRadius: 2 },
+          { label: '送达', data: delivered, borderColor: '#34a853', backgroundColor: 'rgba(52,168,83,.1)', fill: true, tension: .3, pointRadius: 2 },
+          { label: '失败', data: failed, borderColor: '#ea4335', backgroundColor: 'rgba(234,67,53,.1)', fill: true, tension: .3, pointRadius: 2 },
+        ]
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { labels: { color: '#aaa', font: { size: 12 } } } },
+        scales: {
+          x: { ticks: { color: '#666', maxRotation: 0, autoSkip: true, maxTicksLimit: 15 }, grid: { color: 'rgba(255,255,255,.05)' } },
+          y: { beginAtZero: true, ticks: { color: '#666' }, grid: { color: 'rgba(255,255,255,.05)' } },
+        }
+      }
+    });
+  });
+}
+
+// Provider distribution doughnut
+function loadProviderChart() {
+  api('/api/analytics/provider-distribution').then(function(data) {
+    var filtered = data.filter(function(d) { return d.sent > 0; });
+    if (!filtered.length) { document.getElementById('providerChart').parentElement.innerHTML = '<p style="opacity:.5;text-align:center">暂无数据</p>'; return; }
+    if (providerChartInstance) providerChartInstance.destroy();
+    providerChartInstance = new Chart(document.getElementById('providerChart'), {
+      type: 'doughnut',
+      data: {
+        labels: filtered.map(function(d) { return esc(d.name || d.id); }),
+        datasets: [{
+          data: filtered.map(function(d) { return d.sent; }),
+          backgroundColor: COLORS.slice(0, filtered.length),
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom', labels: { color: '#aaa', font: { size: 11 } } } },
+      }
+    });
+  });
+}
+
+// Key usage bar chart
+function loadKeyChart() {
+  api('/api/analytics/key-usage').then(function(data) {
+    var filtered = data.filter(function(d) { return d.sent > 0; });
+    if (!filtered.length) { document.getElementById('keyChart').parentElement.innerHTML = '<p style="opacity:.5;text-align:center">暂无数据</p>'; return; }
+    if (keyChartInstance) keyChartInstance.destroy();
+    keyChartInstance = new Chart(document.getElementById('keyChart'), {
+      type: 'bar',
+      data: {
+        labels: filtered.map(function(d) { return esc(d.name); }),
+        datasets: [
+          { label: '送达', data: filtered.map(function(d) { return d.delivered; }), backgroundColor: '#34a853' },
+          { label: '失败', data: filtered.map(function(d) { return d.failed; }), backgroundColor: '#ea4335' },
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { labels: { color: '#aaa', font: { size: 11 } } } },
+        scales: {
+          x: { stacked: true, ticks: { color: '#666' }, grid: { display: false } },
+          y: { stacked: true, beginAtZero: true, ticks: { color: '#666' }, grid: { color: 'rgba(255,255,255,.05)' } },
+        }
+      }
+    });
+  });
+}
+
+// Provider success rate table
+function loadProviderRate() {
+  api('/api/analytics/provider-distribution').then(function(data) {
+    var el = document.getElementById('providerRate');
+    if (!data.length) { el.innerHTML = '<p style="opacity:.5;text-align:center">暂无数据</p>'; return; }
+    el.innerHTML = data.map(function(d) {
+      var rate = d.sent > 0 ? ((d.delivered / d.sent) * 100).toFixed(1) : '—';
+      var pct = d.sent > 0 ? (d.delivered / d.sent) * 100 : 0;
+      return '<div style="margin-bottom:10px">' +
+        '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px">' +
+          '<span>' + esc(d.name || d.id) + '</span>' +
+          '<span style="color:' + rateColor(pct) + '">' + rate + '% <span style="opacity:.5;font-size:11px">(' + d.delivered + '/' + d.sent + ')</span></span>' +
+        '</div>' +
+        '<div style="height:6px;background:var(--mdui-color-surface-container-highest);border-radius:3px;overflow:hidden">' +
+          '<div style="height:100%;width:' + pct + '%;background:' + rateColor(pct) + ';border-radius:3px;transition:width .3s"></div>' +
+        '</div></div>';
+    }).join('');
+  });
+}
+
+// Recipient domain stats
+function loadRecipientStats() {
+  api('/api/analytics/recipient-stats').then(function(data) {
+    var el = document.getElementById('recipientStats');
+    if (!data.length) { el.innerHTML = '<p style="opacity:.5;text-align:center">暂无数据</p>'; return; }
+    var max = data[0].count;
+    el.innerHTML = data.map(function(d) {
+      var pct = (d.count / max) * 100;
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+        '<span style="width:120px;font-size:13px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(d.domain) + '</span>' +
+        '<div style="flex:1;height:6px;background:var(--mdui-color-surface-container-highest);border-radius:3px;overflow:hidden">' +
+          '<div style="height:100%;width:' + pct + '%;background:var(--mdui-color-primary);border-radius:3px"></div>' +
+        '</div>' +
+        '<span style="font-size:12px;opacity:.6;width:40px;text-align:right">' + d.count + '</span>' +
+      '</div>';
+    }).join('');
+  });
+}
+
+// Populate filter dropdowns
+function loadFilters() {
+  Promise.all([
+    api('/api/analytics/smtp-usage'),
+    api('/api/analytics/key-usage'),
+  ]).then(function(r) {
+    var providers = r[0], keys = r[1];
+    var providerEl = document.getElementById('providerFilter');
+    var keyEl = document.getElementById('keyFilter');
+    providerEl.innerHTML = '<mdui-menu-item value="">全部 Provider</mdui-menu-item>' +
+      providers.map(function(p) { return '<mdui-menu-item value="' + p.id + '">' + esc(p.name || p.id) + '</mdui-menu-item>'; }).join('');
+    keyEl.innerHTML = '<mdui-menu-item value="">全部 Key</mdui-menu-item>' +
+      keys.map(function(k) { return '<mdui-menu-item value="' + k.id + '">' + esc(k.name) + ' (' + esc(k.key_prefix) + ')</mdui-menu-item>'; }).join('');
+  });
+}
+
+// Event listeners
+document.getElementById('daysGroup').addEventListener('change', loadLineChart);
+document.getElementById('providerFilter').addEventListener('change', loadLineChart);
+document.getElementById('keyFilter').addEventListener('change', loadLineChart);
+
+// Init
+loadOverview();
+loadFilters();
+loadLineChart();
+loadProviderChart();
+loadKeyChart();
+loadProviderRate();
+loadRecipientStats();
 </script>
 <%- include('../partials/footer') %>

@@ -24,7 +24,7 @@ const sendEmailSchema = z.object({
     content_id: z.string().optional(),
   })).optional(),
   scheduled_at: z.string().optional(),
-  provider: z.string().optional(),
+  provider: z.string().min(1),
 })
 
 const batchEmailSchema = z.array(sendEmailSchema).max(100)

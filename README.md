@@ -1,5 +1,5 @@
 # Amail — 邮件代理网关
-
+> 看那焚尽孤城，寂冷了三生
 自托管的邮件代理网关服务，提供 **Resend 兼容 API**，内部通过 SMTP 发送邮件。
 
 ## 特性
@@ -98,7 +98,7 @@ curl -X POST http://localhost:3000/emails/batch \
   -H "Content-Type: application/json" \
   -d '[
     {"from": "a@domain.com", "to": ["user1@example.com"], "subject": "Hi", "html": "<p>1</p>"},
-    {"from": "a@domain.com", "to": ["user2@example.com"], "subject": "Hi", "html": "<p>2</p>"} 
+    {"from": "a@domain.com", "to": ["user2@example.com"], "subject": "Hi", "html": "<p>2</p>"}
   ]'
 ```
 

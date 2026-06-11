@@ -12,7 +12,13 @@ export function getDb(): Database.Database {
     db = new Database(config.dbPath)
     db.pragma('journal_mode = WAL')
     db.pragma('foreign_keys = ON')
-    runMigrations(db)
+    db.pragma('busy_timeout = 5000')
+    try {
+      runMigrations(db)
+    } catch (err) {
+      console.error('[db] Migration failed:', err)
+      throw err
+    }
   }
   return db
 }

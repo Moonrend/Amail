@@ -25,8 +25,8 @@ export interface CreateEmailOptions {
   attachments?: Attachment[];
   /** Schedule email to be sent later. ISO 8601 format. */
   scheduledAt?: string;
-  /** SMTP provider ID to use for sending. If not specified, auto-selected by from address. */
-  provider?: string;
+  /** SMTP provider ID to use for sending. Pass "auto" to auto-select by from address. */
+  provider: string;
 }
 
 export interface CreateEmailRequestOptions {

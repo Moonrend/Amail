@@ -21,7 +21,7 @@ export interface SendEmailInput {
     content_id?: string
   }>
   scheduled_at?: string
-  provider?: string
+  provider: string
 }
 
 function toArray(val: string | string[] | undefined): string[] {
@@ -52,15 +52,13 @@ export async function processSendEmail(
 
   const emailId = nanoid(21) // Resend uses 21-char IDs
   const toAddresses = toArray(input.to)
-  const ccAddresses = toArray(input.cc)
-  const bccAddresses = toArray(input.bcc)
   const replyTo = toArray(input.reply_to)
 
-  // Select SMTP config — use explicit provider if given, otherwise auto-select by from address
+  // Select SMTP config: "auto" selects by from address, otherwise use provider ID directly
   const fromParsed = parseFrom(input.from)
-  const smtpConfig = input.provider
-    ? await getSmtpConfigById(input.provider)
-    : await selectSmtpConfig(fromParsed.address)
+  const smtpConfig = input.provider === 'auto'
+    ? await selectSmtpConfig(fromParsed.address)
+    : await getSmtpConfigById(input.provider)
 
   // Resolve from address:
   //   SMTP config from_address set → use "from_name <from_address>"
@@ -86,8 +84,10 @@ export async function processSendEmail(
     text: input.text,
   }
 
-  if (ccAddresses.length) mailOptions.cc = ccAddresses.join(', ')
-  if (bccAddresses.length) mailOptions.bcc = bccAddresses.join(', ')
+  const ccList = toArray(input.cc)
+  const bccList = toArray(input.bcc)
+  if (ccList.length) mailOptions.cc = ccList.join(', ')
+  if (bccList.length) mailOptions.bcc = bccList.join(', ')
   if (replyTo.length) mailOptions.replyTo = replyTo.join(', ')
   if (input.headers) mailOptions.headers = input.headers
 
@@ -101,26 +101,22 @@ export async function processSendEmail(
     }))
   }
 
-  // Log to database
+  // Log to database (lean — no content, no cc/bcc/headers/tags)
   db.prepare(`
-    INSERT INTO email_logs (id, api_key_id, smtp_config_id, from_address, to_addresses, cc_addresses, bcc_addresses,
-      subject, has_html, has_text, has_attachments, attachment_count, tags, headers, status, idempotency_key, scheduled_at, queued_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    INSERT INTO email_logs (id, api_key_id, smtp_config_id, from_address, to_addresses,
+      subject, has_html, has_text, has_attachments, attachment_count, status, idempotency_key, scheduled_at, queued_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
   `).run(
     emailId,
     apiKeyId,
     smtpConfig.id,
     fromAddress,
     JSON.stringify(toAddresses),
-    JSON.stringify(ccAddresses),
-    JSON.stringify(bccAddresses),
     input.subject,
     input.html ? 1 : 0,
     input.text ? 1 : 0,
     input.attachments?.length ? 1 : 0,
     input.attachments?.length || 0,
-    input.tags ? JSON.stringify(input.tags) : null,
-    input.headers ? JSON.stringify(input.headers) : null,
     'queued',
     idempotencyKey || null,
     input.scheduled_at || null,
@@ -132,9 +128,9 @@ export async function processSendEmail(
     const result = await sendEmail(smtpConfig.id, mailOptions)
 
     db.prepare(`
-      UPDATE email_logs SET status = 'delivered', message_id = ?, smtp_response = ?, sent_at = datetime('now')
+      UPDATE email_logs SET status = 'delivered', message_id = ?, sent_at = datetime('now')
       WHERE id = ?
-    `).run(result.messageId, result.response, emailId)
+    `).run(result.messageId, emailId)
 
     // Update analytics
     const today = new Date().toISOString().slice(0, 10)
