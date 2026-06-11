@@ -1,6 +1,6 @@
 {
   "name": "@wydev/amail-cli",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Amail CLI — send emails from the command line",
   "license": "MIT",
   "repository": {
