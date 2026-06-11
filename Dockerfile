@@ -19,7 +19,7 @@ COPY packages/server/ packages/server/
 COPY packages/amail/ packages/amail/
 
 # Build
-RUN npm run build --workspaces --if-present
+RUN npm --workspace=@amail/server run build
 
 # ── Production stage ───────────────────────────────────────────────
 FROM node:20-alpine AS production
