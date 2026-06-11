@@ -5,7 +5,7 @@ RUN corepack enable
 
 WORKDIR /app
 
-# Copy workspace root
+# Copy workspace root and package manifests
 COPY package.json package-lock.json ./
 COPY packages/server/package.json packages/server/
 COPY packages/amail/package.json packages/amail/
@@ -14,9 +14,8 @@ COPY packages/cli/package.json packages/cli/
 # Install dependencies
 RUN npm ci
 
-# Copy source
-COPY packages/server/ packages/server/
-COPY packages/amail/ packages/amail/
+# Copy entire source (includes drizzle.config.ts, migrations, templates, etc.)
+COPY . .
 
 # Build
 RUN npm --workspace=@amail/server run build
@@ -37,8 +36,9 @@ COPY packages/cli/package.json packages/cli/
 # Install production dependencies only
 RUN npm ci --omit=dev
 
-# Copy built files
+# Copy built files and drizzle config (for operational use)
 COPY --from=builder /app/packages/server/dist packages/server/dist
+COPY --from=builder /app/drizzle.config.ts ./
 
 # Create data directory
 RUN mkdir -p /data

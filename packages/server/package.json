@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc && xcopy /E /Y /I src\\web dist\\web >nul 2>&1 || cp -r src/web dist/web && xcopy /E /Y /I src\\db\\migrations dist\\db\\migrations >nul 2>&1 || cp -r src/db/migrations dist/db/migrations",
+    "build": "tsc && cp -r src/web dist/web && cp -r src/db/migrations dist/db/migrations",
     "start": "node dist/index.js",
     "db:generate": "drizzle-kit generate --config ../../drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config ../../drizzle.config.ts",
