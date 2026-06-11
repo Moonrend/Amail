@@ -118,7 +118,7 @@ async function sendFlow(rl: Interface, config: Config): Promise<void> {
   console.log('── 📨 发送邮件 ──────────────────────────\n');
 
   // Provider selection
-  let providerId = '';
+  let providerId: string | undefined;
   const providersRes = await apiCall(config, 'GET', '/emails/providers');
   if (providersRes.ok && providersRes.data?.data?.length > 0) {
     const providers = providersRes.data.data;
