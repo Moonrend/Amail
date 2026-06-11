@@ -15,11 +15,11 @@ import { Amail } from '@wydev/amail';
 
 const amail = new Amail('am_your_api_key', {
   baseUrl: 'https://amail.your-domain.com',
+  providerId: 'smtp_config_id',
 });
 
 // Send an email
 const { data, error } = await amail.emails.send({
-  providerId: 'smtp_config_id',
   from: 'you@your-domain.com',
   to: 'user@example.com',
   subject: 'Hello World',
@@ -42,6 +42,7 @@ Create a new Amail client.
 - `key` — API key (starts with `am_`). Falls back to `AMAIL_API_KEY` env var.
 - `options.baseUrl` — Amail server URL. Falls back to `AMAIL_BASE_URL` env var, then `http://localhost:4000`.
 - `options.userAgent` — Custom User-Agent header.
+- `options.providerId` — Default SMTP provider ID. Falls back to `AMAIL_PROVIDER_ID`.
 
 ### `amail.emails`
 
@@ -49,7 +50,7 @@ Create a new Amail client.
 
 Send a single email. Alias for `emails.create()`.
 
-`providerId` is required and should be the SMTP provider ID returned by `amail.emails.providers()`.
+`providerId` can be provided in each payload, or set once in `new Amail(..., { providerId })`.
 
 ```typescript
 const { data, error } = await amail.emails.send({
@@ -69,6 +70,8 @@ const { data, error } = await amail.emails.send({
   idempotencyKey: 'unique-key-123',
 });
 ```
+
+If `providerId` is missing in both payload and initialization options, the SDK will throw an error before making the request.
 
 #### `emails.get(id)`
 
@@ -138,6 +141,8 @@ const amail = new Amail('am_xxx', { baseUrl: 'https://amail.your-domain.com' });
 ```
 
 The API surface for `emails.send`, `emails.get`, `emails.list`, `emails.cancel`, and `batch.send` is identical.
+
+Note: Resend does not require selecting an SMTP provider, but Amail does. Provide `providerId` in payloads or set a default via `new Amail(..., { providerId })`.
 
 ## License
 

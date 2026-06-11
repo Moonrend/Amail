@@ -8,11 +8,13 @@ const defaultUserAgent = 'amail/1.0.0';
 export interface AmailOptions {
   baseUrl?: string;
   userAgent?: string;
+  providerId?: string;
 }
 
 export class Amail {
   readonly baseUrl: string;
   readonly userAgent: string;
+  readonly providerId?: string;
   private readonly headers: Headers;
 
   readonly emails: Emails;
@@ -44,6 +46,11 @@ export class Amail {
       (typeof process !== 'undefined' && process.env
         ? process.env.AMAIL_USER_AGENT || defaultUserAgent
         : defaultUserAgent);
+    this.providerId =
+      options?.providerId ??
+      (typeof process !== 'undefined' && process.env
+        ? process.env.AMAIL_PROVIDER_ID
+        : undefined);
 
     this.headers = new Headers({
       Authorization: `Bearer ${this.key}`,

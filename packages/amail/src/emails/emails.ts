@@ -23,10 +23,12 @@ import type {
   ListProvidersResponseSuccess,
 } from './interfaces/list-providers.interface.js';
 
-function parseEmailToApiOptions(email: CreateEmailOptions) {
-  const providerId = email.providerId ?? email.provider;
+function parseEmailToApiOptions(email: CreateEmailOptions, defaultProviderId?: string) {
+  const providerId = email.providerId ?? email.provider ?? defaultProviderId;
   if (!providerId) {
-    throw new Error('Missing providerId. Set `providerId` to the SMTP provider ID.');
+    throw new Error(
+      'Missing providerId. Set `providerId` in payload or pass default `providerId` to `new Amail(...)`.',
+    );
   }
   return {
     from: email.from,
@@ -81,7 +83,7 @@ export class Emails {
   ): Promise<CreateEmailResponse> {
     const data = await this.amail.post<CreateEmailResponseSuccess>(
       '/emails',
-      parseEmailToApiOptions(payload),
+      parseEmailToApiOptions(payload, this.amail.providerId),
       options,
     );
     return data;

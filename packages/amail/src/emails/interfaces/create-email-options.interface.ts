@@ -26,7 +26,7 @@ export interface CreateEmailOptions {
   /** Schedule email to be sent later. ISO 8601 format. */
   scheduledAt?: string;
   /** SMTP provider ID to use for sending (from `amail.emails.providers()`). */
-  providerId: string;
+  providerId?: string;
   /** @deprecated Use `providerId` instead. */
   provider?: string;
 }
