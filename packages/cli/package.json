@@ -2,6 +2,16 @@
   "name": "@wydev/amail-cli",
   "version": "1.1.7",
   "description": "Amail CLI — send emails from the command line",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Moonrend/Amail"
+  },
+  "homepage": "https://github.com/Moonrend/Amail#readme",
+  "bugs": {
+    "url": "https://github.com/Moonrend/Amail/issues"
+  },
+  "author": "Moonrend",
   "type": "module",
   "bin": {
     "amail": "dist/index.js"
@@ -9,7 +19,13 @@
   "files": [
     "dist"
   ],
-  "license": "MIT",
+  "keywords": [
+    "amail",
+    "email",
+    "smtp",
+    "cli",
+    "resend-compatible"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",

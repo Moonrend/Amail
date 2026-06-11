@@ -7,6 +7,15 @@
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Moonrend/Amail"
+  },
+  "homepage": "https://github.com/Moonrend/Amail#readme",
+  "bugs": {
+    "url": "https://github.com/Moonrend/Amail/issues"
+  },
+  "author": "Moonrend",
   "exports": {
     ".": {
       "import": {
@@ -38,6 +47,7 @@
     "email",
     "smtp",
     "sdk",
-    "resend-compatible"
+    "resend-compatible",
+    "nodejs"
   ]
 }

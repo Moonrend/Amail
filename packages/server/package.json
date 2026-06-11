@@ -2,8 +2,25 @@
   "name": "@amail/server",
   "version": "1.0.0",
   "description": "Amail server — self-hosted email proxy gateway",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Moonrend/Amail"
+  },
+  "homepage": "https://github.com/Moonrend/Amail#readme",
+  "bugs": {
+    "url": "https://github.com/Moonrend/Amail/issues"
+  },
+  "author": "Moonrend",
   "type": "module",
   "main": "dist/index.js",
+  "keywords": [
+    "amail",
+    "email",
+    "smtp",
+    "server",
+    "gateway"
+  ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc && xcopy /E /Y /I src\\web dist\\web >nul 2>&1 || cp -r src/web dist/web",
@@ -27,5 +44,8 @@
     "@types/nodemailer": "^6.4.17",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
