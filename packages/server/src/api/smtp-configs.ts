@@ -1,8 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
+import { eq, desc } from 'drizzle-orm'
 import { authenticateAdmin } from '../auth/middleware.js'
 import { getDb } from '../db/index.js'
+import { smtpConfigs } from '../db/schema.js'
+import { now } from '../db/timestamp.js'
 import { encrypt, decrypt } from '../crypto.js'
 import { testSmtpConnection, invalidateTransporter, sendEmail } from '../smtp/manager.js'
 import { discoverSmtpConfig } from '../smtp/autoconfig.js'
@@ -43,18 +46,18 @@ function encryptSensitiveFields(data: any) {
 
 function decryptSensitiveFields(row: any) {
   const result = { ...row }
-  if (result.password_encrypted) {
-    try { result.password = decrypt(result.password_encrypted) } catch { /* ignore */ }
+  if (result.passwordEncrypted) {
+    try { result.password = decrypt(result.passwordEncrypted) } catch { /* ignore */ }
   }
-  if (result.oauth2_client_secret_encrypted) {
-    try { result.oauth2_client_secret = decrypt(result.oauth2_client_secret_encrypted) } catch { /* ignore */ }
+  if (result.oauth2ClientSecretEncrypted) {
+    try { result.oauth2_client_secret = decrypt(result.oauth2ClientSecretEncrypted) } catch { /* ignore */ }
   }
-  if (result.oauth2_refresh_token_encrypted) {
-    try { result.oauth2_refresh_token = decrypt(result.oauth2_refresh_token_encrypted) } catch { /* ignore */ }
+  if (result.oauth2RefreshTokenEncrypted) {
+    try { result.oauth2_refresh_token = decrypt(result.oauth2RefreshTokenEncrypted) } catch { /* ignore */ }
   }
-  delete result.password_encrypted
-  delete result.oauth2_client_secret_encrypted
-  delete result.oauth2_refresh_token_encrypted
+  delete result.passwordEncrypted
+  delete result.oauth2ClientSecretEncrypted
+  delete result.oauth2RefreshTokenEncrypted
   return result
 }
 
@@ -81,7 +84,7 @@ export async function smtpConfigRoutes(app: FastifyInstance): Promise<void> {
     if (!(await authenticateAdmin(request, reply))) return
 
     const db = getDb()
-    const rows = db.prepare('SELECT * FROM smtp_configs ORDER BY created_at DESC').all()
+    const rows = db.select().from(smtpConfigs).orderBy(desc(smtpConfigs.createdAt)).all()
     return reply.send(rows.map(decryptSensitiveFields))
   })
 
@@ -98,20 +101,27 @@ export async function smtpConfigRoutes(app: FastifyInstance): Promise<void> {
     const db = getDb()
     const encrypted = encryptSensitiveFields(parsed.data)
 
-    db.prepare(`
-      INSERT INTO smtp_configs (id, name, host, port, secure, auth_type, username,
-        password_encrypted, oauth2_client_id, oauth2_client_secret_encrypted,
-        oauth2_refresh_token_encrypted, oauth2_tenant_id, from_address, from_name)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id, encrypted.name || null, encrypted.host, encrypted.port, encrypted.secure ? 1 : 0,
-      encrypted.auth_type, encrypted.username || null, encrypted.password_encrypted || null,
-      encrypted.oauth2_client_id || null, encrypted.oauth2_client_secret_encrypted || null,
-      encrypted.oauth2_refresh_token_encrypted || null, encrypted.oauth2_tenant_id || null,
-      encrypted.from_address || null, encrypted.from_name || null,
-    )
+    const ts = now()
+    db.insert(smtpConfigs).values({
+      id,
+      name: encrypted.name || null,
+      host: encrypted.host,
+      port: encrypted.port,
+      secure: encrypted.secure ? 1 : 0,
+      authType: encrypted.auth_type,
+      username: encrypted.username || null,
+      passwordEncrypted: encrypted.password_encrypted || null,
+      oauth2ClientId: encrypted.oauth2_client_id || null,
+      oauth2ClientSecretEncrypted: encrypted.oauth2_client_secret_encrypted || null,
+      oauth2RefreshTokenEncrypted: encrypted.oauth2_refresh_token_encrypted || null,
+      oauth2TenantId: encrypted.oauth2_tenant_id || null,
+      fromAddress: encrypted.from_address || null,
+      fromName: encrypted.from_name || null,
+      createdAt: ts,
+      updatedAt: ts,
+    }).run()
 
-    const row = db.prepare('SELECT * FROM smtp_configs WHERE id = ?').get(id)
+    const row = db.select().from(smtpConfigs).where(eq(smtpConfigs.id, id)).get()!
     return reply.code(201).send(decryptSensitiveFields(row))
   })
 
@@ -120,7 +130,7 @@ export async function smtpConfigRoutes(app: FastifyInstance): Promise<void> {
     if (!(await authenticateAdmin(request, reply))) return
 
     const db = getDb()
-    const row = db.prepare('SELECT * FROM smtp_configs WHERE id = ?').get(request.params.id)
+    const row = db.select().from(smtpConfigs).where(eq(smtpConfigs.id, request.params.id)).get()
     if (!row) return reply.code(404).send({ error: 'Not found' })
     return reply.send(decryptSensitiveFields(row))
   })
@@ -135,28 +145,37 @@ export async function smtpConfigRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const db = getDb()
-    const existing = db.prepare('SELECT * FROM smtp_configs WHERE id = ?').get(request.params.id)
+    const existing = db.select().from(smtpConfigs).where(eq(smtpConfigs.id, request.params.id)).get()
     if (!existing) return reply.code(404).send({ error: 'Not found' })
 
     const encrypted = encryptSensitiveFields(parsed.data)
-    const fields: string[] = []
-    const values: any[] = []
 
-    for (const [key, val] of Object.entries(encrypted)) {
-      if (val !== undefined) {
-        fields.push(`${key} = ?`)
-        values.push(key.endsWith('_encrypted') ? val : (typeof val === 'boolean' ? (val ? 1 : 0) : val))
+    // Build partial update object mapping API field names to schema column names
+    const updates: Record<string, any> = {}
+    const fieldMap: Record<string, string> = {
+      host: 'host', port: 'port', secure: 'secure',
+      auth_type: 'authType', username: 'username',
+      password_encrypted: 'passwordEncrypted',
+      oauth2_client_id: 'oauth2ClientId',
+      oauth2_client_secret_encrypted: 'oauth2ClientSecretEncrypted',
+      oauth2_refresh_token_encrypted: 'oauth2RefreshTokenEncrypted',
+      oauth2_tenant_id: 'oauth2TenantId',
+      from_address: 'fromAddress', from_name: 'fromName',
+    }
+
+    for (const [apiKey, val] of Object.entries(encrypted)) {
+      if (val !== undefined && fieldMap[apiKey]) {
+        updates[fieldMap[apiKey]] = typeof val === 'boolean' ? (val ? 1 : 0) : val
       }
     }
 
-    if (fields.length > 0) {
-      fields.push("updated_at = datetime('now')")
-      values.push(request.params.id)
-      db.prepare(`UPDATE smtp_configs SET ${fields.join(', ')} WHERE id = ?`).run(...values)
+    if (Object.keys(updates).length > 0) {
+      updates.updatedAt = now()
+      db.update(smtpConfigs).set(updates).where(eq(smtpConfigs.id, request.params.id)).run()
       invalidateTransporter(request.params.id)
     }
 
-    const row = db.prepare('SELECT * FROM smtp_configs WHERE id = ?').get(request.params.id)
+    const row = db.select().from(smtpConfigs).where(eq(smtpConfigs.id, request.params.id)).get()!
     return reply.send(decryptSensitiveFields(row))
   })
 
@@ -165,7 +184,7 @@ export async function smtpConfigRoutes(app: FastifyInstance): Promise<void> {
     if (!(await authenticateAdmin(request, reply))) return
 
     const db = getDb()
-    db.prepare('DELETE FROM smtp_configs WHERE id = ?').run(request.params.id)
+    db.delete(smtpConfigs).where(eq(smtpConfigs.id, request.params.id)).run()
     invalidateTransporter(request.params.id)
     return reply.send({ deleted: true })
   })
@@ -188,11 +207,11 @@ export async function smtpConfigRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const db = getDb()
-    const config = db.prepare('SELECT * FROM smtp_configs WHERE id = ?').get(request.params.id) as any
+    const config = db.select().from(smtpConfigs).where(eq(smtpConfigs.id, request.params.id)).get()
     if (!config) return reply.code(404).send({ error: 'Not found' })
 
-    const fromAddress = config.from_address || config.username || 'test@amail.local'
-    const fromName = config.from_name || 'Amail'
+    const fromAddress = config.fromAddress || config.username || 'test@amail.local'
+    const fromName = config.fromName || 'Amail'
     const from = fromName ? `${fromName} <${fromAddress}>` : fromAddress
 
     try {

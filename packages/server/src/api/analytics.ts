@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify'
+import { eq, and, desc, sql } from 'drizzle-orm'
 import { authenticateAdmin } from '../auth/middleware.js'
 import { getOverview, getDailyStats, getSmtpUsage, clearLogs, getProviderDistribution, getKeyUsage, getRecipientStats } from '../services/analytics.js'
 import { getDb } from '../db/index.js'
+import { emailLogs, apiKeys, smtpConfigs } from '../db/schema.js'
 
 export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
   // GET /api/analytics/overview
@@ -65,31 +67,47 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
     const apiKeyId = request.query.api_key_id
 
     const db = getDb()
-    let where = '1=1'
-    const params: any[] = []
 
-    if (status) {
-      where += ' AND e.status = ?'
-      params.push(status)
-    }
-    if (apiKeyId) {
-      where += ' AND e.api_key_id = ?'
-      params.push(apiKeyId)
-    }
+    // Build conditions
+    const conditions = []
+    if (status) conditions.push(eq(emailLogs.status, status))
+    if (apiKeyId) conditions.push(eq(emailLogs.apiKeyId, apiKeyId))
+    const where = conditions.length ? and(...conditions) : undefined
 
-    const total = (db.prepare(`SELECT COUNT(*) as count FROM email_logs e WHERE ${where}`).get(...params) as any).count
-    const rows = db.prepare(`
-      SELECT e.id, e.api_key_id, e.smtp_config_id, e.from_address, e.to_addresses, e.subject,
-        e.has_html, e.has_text, e.has_attachments, e.attachment_count,
-        e.status, e.error_message, e.message_id, e.created_at, e.sent_at,
-        k.name as key_name, k.key_prefix,
-        s.name as provider_name
-      FROM email_logs e
-      LEFT JOIN api_keys k ON k.id = e.api_key_id
-      LEFT JOIN smtp_configs s ON s.id = e.smtp_config_id
-      WHERE ${where}
-      ORDER BY e.created_at DESC LIMIT ? OFFSET ?
-    `).all(...params, limit, offset)
+    const totalRow = db.select({ count: sql<number>`count(*)` })
+      .from(emailLogs)
+      .where(where)
+      .get()!
+    const total = totalRow.count
+
+    const rows = db.select({
+      id: emailLogs.id,
+      api_key_id: emailLogs.apiKeyId,
+      smtp_config_id: emailLogs.smtpConfigId,
+      from_address: emailLogs.fromAddress,
+      to_addresses: emailLogs.toAddresses,
+      subject: emailLogs.subject,
+      has_html: emailLogs.hasHtml,
+      has_text: emailLogs.hasText,
+      has_attachments: emailLogs.hasAttachments,
+      attachment_count: emailLogs.attachmentCount,
+      status: emailLogs.status,
+      error_message: emailLogs.errorMessage,
+      message_id: emailLogs.messageId,
+      created_at: emailLogs.createdAt,
+      sent_at: emailLogs.sentAt,
+      key_name: apiKeys.name,
+      key_prefix: apiKeys.keyPrefix,
+      provider_name: smtpConfigs.name,
+    })
+      .from(emailLogs)
+      .leftJoin(apiKeys, eq(apiKeys.id, emailLogs.apiKeyId))
+      .leftJoin(smtpConfigs, eq(smtpConfigs.id, emailLogs.smtpConfigId))
+      .where(where)
+      .orderBy(desc(emailLogs.createdAt))
+      .limit(limit)
+      .offset(offset)
+      .all()
 
     return reply.send({
       data: rows.map((r: any) => {

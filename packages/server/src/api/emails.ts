@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { eq, and, gt, lt, desc, asc } from 'drizzle-orm'
 import { authenticateApi } from '../auth/middleware.js'
 import { processSendEmail, type SendEmailInput } from '../services/email-sender.js'
 import { listSmtpConfigs } from '../smtp/manager.js'
 import { getDb } from '../db/index.js'
+import { emailLogs } from '../db/schema.js'
 
 const sendEmailSchema = z.object({
   from: z.string().optional(),
@@ -92,12 +94,21 @@ export async function emailRoutes(app: FastifyInstance): Promise<void> {
     if (!apiKey) return
 
     const db = getDb()
-    const email = db.prepare(`
-      SELECT id, from_address as "from", to_addresses as "to", subject,
-        cc_addresses as cc, bcc_addresses as bcc, tags, headers, status,
-        error_message as last_error, message_id, scheduled_at, created_at, sent_at
-      FROM email_logs WHERE id = ?
-    `).get(request.params.id) as any
+    const email = db.select({
+      id: emailLogs.id,
+      from: emailLogs.fromAddress,
+      to: emailLogs.toAddresses,
+      subject: emailLogs.subject,
+      status: emailLogs.status,
+      last_error: emailLogs.errorMessage,
+      message_id: emailLogs.messageId,
+      scheduled_at: emailLogs.scheduledAt,
+      created_at: emailLogs.createdAt,
+      sent_at: emailLogs.sentAt,
+    })
+      .from(emailLogs)
+      .where(eq(emailLogs.id, request.params.id))
+      .get()
 
     if (!email) {
       return reply.code(404).send({
@@ -107,22 +118,16 @@ export async function emailRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
-    // Parse JSON fields
     try { email.to = JSON.parse(email.to) } catch { /* keep as is */ }
-    try { email.cc = JSON.parse(email.cc) } catch { /* keep as is */ }
-    try { email.bcc = JSON.parse(email.bcc) } catch { /* keep as is */ }
-    try { email.tags = JSON.parse(email.tags) } catch { /* keep as is */ }
-    try { email.headers = JSON.parse(email.headers) } catch { /* keep as is */ }
 
-    // Add last_event for Resend compatibility
-    email.last_event = email.status === 'delivered' ? 'delivered'
+    const last_event = email.status === 'delivered' ? 'delivered'
       : email.status === 'failed' ? 'failed'
       : email.status === 'cancelled' ? 'canceled'
       : email.status === 'queued' ? 'queued'
       : email.status === 'sending' ? 'sent'
       : email.status
 
-    return reply.send(email)
+    return reply.send({ ...email, last_event })
   })
 
   // POST /emails/:id/cancel — Cancel a scheduled email (Resend-compatible)
@@ -131,7 +136,10 @@ export async function emailRoutes(app: FastifyInstance): Promise<void> {
     if (!apiKey) return
 
     const db = getDb()
-    const email = db.prepare('SELECT id, status FROM email_logs WHERE id = ?').get(request.params.id) as any
+    const email = db.select({ id: emailLogs.id, status: emailLogs.status })
+      .from(emailLogs)
+      .where(eq(emailLogs.id, request.params.id))
+      .get()
 
     if (!email) {
       return reply.code(404).send({
@@ -149,7 +157,7 @@ export async function emailRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
-    db.prepare('UPDATE email_logs SET status = \'cancelled\' WHERE id = ?').run(request.params.id)
+    db.update(emailLogs).set({ status: 'cancelled' }).where(eq(emailLogs.id, request.params.id)).run()
     return reply.send({ object: 'email', id: request.params.id, deleted: true })
   })
 
@@ -165,36 +173,61 @@ export async function emailRoutes(app: FastifyInstance): Promise<void> {
     const before = request.query.before
 
     const db = getDb()
-    let query: string
-    let params: any[]
+
+    const selectFields = {
+      id: emailLogs.id,
+      from: emailLogs.fromAddress,
+      to: emailLogs.toAddresses,
+      subject: emailLogs.subject,
+      status: emailLogs.status,
+      created_at: emailLogs.createdAt,
+      sent_at: emailLogs.sentAt,
+    }
+
+    let rows: any[]
 
     if (after) {
       // Fetch items created after the given cursor
-      query = `SELECT id, from_address as "from", to_addresses as "to", subject, status, created_at, sent_at
-        FROM email_logs WHERE api_key_id = ? AND created_at > (SELECT created_at FROM email_logs WHERE id = ?)
-        ORDER BY created_at ASC LIMIT ?`
-      params = [apiKey.id, after, limit + 1]
+      const cursor = db.select({ created_at: emailLogs.createdAt })
+        .from(emailLogs)
+        .where(eq(emailLogs.id, after))
+        .get()
+      if (!cursor) return reply.send({ data: [] })
+
+      rows = db.select(selectFields)
+        .from(emailLogs)
+        .where(and(eq(emailLogs.apiKeyId, apiKey.id), gt(emailLogs.createdAt, cursor.created_at)))
+        .orderBy(asc(emailLogs.createdAt))
+        .limit(limit + 1)
+        .all()
     } else if (before) {
-      // Fetch items created before the given cursor
-      query = `SELECT id, from_address as "from", to_addresses as "to", subject, status, created_at, sent_at
-        FROM email_logs WHERE api_key_id = ? AND created_at < (SELECT created_at FROM email_logs WHERE id = ?)
-        ORDER BY created_at DESC LIMIT ?`
-      params = [apiKey.id, before, limit + 1]
+      const cursor = db.select({ created_at: emailLogs.createdAt })
+        .from(emailLogs)
+        .where(eq(emailLogs.id, before))
+        .get()
+      if (!cursor) return reply.send({ data: [] })
+
+      rows = db.select(selectFields)
+        .from(emailLogs)
+        .where(and(eq(emailLogs.apiKeyId, apiKey.id), lt(emailLogs.createdAt, cursor.created_at)))
+        .orderBy(desc(emailLogs.createdAt))
+        .limit(limit + 1)
+        .all()
     } else {
-      query = `SELECT id, from_address as "from", to_addresses as "to", subject, status, created_at, sent_at
-        FROM email_logs WHERE api_key_id = ?
-        ORDER BY created_at DESC LIMIT ?`
-      params = [apiKey.id, limit + 1]
+      rows = db.select(selectFields)
+        .from(emailLogs)
+        .where(eq(emailLogs.apiKeyId, apiKey.id))
+        .orderBy(desc(emailLogs.createdAt))
+        .limit(limit + 1)
+        .all()
     }
 
-    const rows = db.prepare(query).all(...params) as any[]
     const hasMore = rows.length > limit
     const data = rows.slice(0, limit).map((r: any) => {
       try { r.to = JSON.parse(r.to) } catch { /* keep */ }
       return r
     })
 
-    // Reverse if we queried DESC for the "before" case
     if (before) data.reverse()
 
     return reply.send({
@@ -234,7 +267,10 @@ export async function emailRoutes(app: FastifyInstance): Promise<void> {
     if (!apiKey) return
 
     const db = getDb()
-    const email = db.prepare('SELECT id, status FROM email_logs WHERE id = ?').get(request.params.id) as any
+    const email = db.select({ id: emailLogs.id, status: emailLogs.status })
+      .from(emailLogs)
+      .where(eq(emailLogs.id, request.params.id))
+      .get()
 
     if (!email) {
       return reply.code(404).send({
@@ -252,7 +288,7 @@ export async function emailRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
-    db.prepare('UPDATE email_logs SET status = \'cancelled\' WHERE id = ?').run(request.params.id)
+    db.update(emailLogs).set({ status: 'cancelled' }).where(eq(emailLogs.id, request.params.id)).run()
     return reply.send({ object: 'email', id: request.params.id, deleted: true })
   })
 }

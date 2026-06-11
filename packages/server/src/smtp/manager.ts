@@ -1,46 +1,30 @@
 import nodemailer from 'nodemailer'
 import type { Transporter } from 'nodemailer'
+import { eq, or, isNull, desc } from 'drizzle-orm'
 import { getDb } from '../db/index.js'
+import { smtpConfigs, type SmtpConfig } from '../db/schema.js'
+import { now } from '../db/timestamp.js'
 import { decrypt, encrypt } from '../crypto.js'
 import { refreshOAuth2Token, isTokenExpired } from './oauth.js'
-
-export interface SmtpConfigRow {
-  id: string
-  name: string
-  host: string
-  port: number
-  secure: number
-  auth_type: string
-  username: string | null
-  password_encrypted: string | null
-  oauth2_client_id: string | null
-  oauth2_client_secret_encrypted: string | null
-  oauth2_refresh_token_encrypted: string | null
-  oauth2_access_token: string | null
-  oauth2_token_expires: number | null
-  oauth2_tenant_id: string | null
-  from_address: string | null
-  from_name: string | null
-}
 
 // Connection pool: configId -> transporter
 const transporterCache = new Map<string, Transporter>()
 
-function buildTransporterOptions(config: SmtpConfigRow, accessToken?: string): Record<string, unknown> {
+function buildTransporterOptions(config: SmtpConfig, accessToken?: string): Record<string, unknown> {
   const opts: Record<string, unknown> = {
     host: config.host,
     port: config.port,
     secure: config.secure === 1,
   }
 
-  switch (config.auth_type) {
+  switch (config.authType) {
     case 'password':
     case 'plain':
     case 'login':
       opts.auth = {
-        type: config.auth_type === 'password' ? 'login' : config.auth_type,
+        type: config.authType === 'password' ? 'login' : config.authType,
         user: config.username || '',
-        pass: config.password_encrypted ? decrypt(config.password_encrypted) : '',
+        pass: config.passwordEncrypted ? decrypt(config.passwordEncrypted) : '',
       }
       break
 
@@ -49,7 +33,7 @@ function buildTransporterOptions(config: SmtpConfigRow, accessToken?: string): R
         type: 'custom',
         method: 'CRAM-MD5',
         user: config.username || '',
-        pass: config.password_encrypted ? decrypt(config.password_encrypted) : '',
+        pass: config.passwordEncrypted ? decrypt(config.passwordEncrypted) : '',
       }
       break
 
@@ -62,26 +46,24 @@ function buildTransporterOptions(config: SmtpConfigRow, accessToken?: string): R
       break
 
     case 'none':
-      // No authentication
       break
 
     default:
-      throw new Error(`Unsupported auth type: ${config.auth_type}`)
+      throw new Error(`Unsupported auth type: ${config.authType}`)
   }
 
   return opts
 }
 
-async function getTransporter(configId: string): Promise<{ transporter: Transporter; config: SmtpConfigRow }> {
+async function getTransporter(configId: string): Promise<{ transporter: Transporter; config: SmtpConfig }> {
   const db = getDb()
-  const config = db.prepare('SELECT * FROM smtp_configs WHERE id = ?').get(configId) as SmtpConfigRow | undefined
+  const config = db.select().from(smtpConfigs).where(eq(smtpConfigs.id, configId)).get()
   if (!config) throw new Error(`SMTP config not found: ${configId}`)
 
   // Handle OAuth2 token refresh
-  let accessToken = config.oauth2_access_token
-  if (config.auth_type === 'oauth2') {
-    if (isTokenExpired(config.oauth2_token_expires)) {
-      // Determine provider from host
+  let accessToken = config.oauth2AccessToken
+  if (config.authType === 'oauth2') {
+    if (isTokenExpired(config.oauth2TokenExpires)) {
       let provider: 'microsoft' | 'google' | 'generic' = 'generic'
       if (config.host.includes('office365') || config.host.includes('outlook')) {
         provider = 'microsoft'
@@ -89,22 +71,25 @@ async function getTransporter(configId: string): Promise<{ transporter: Transpor
         provider = 'google'
       }
 
-      const secret = config.oauth2_client_secret_encrypted ? decrypt(config.oauth2_client_secret_encrypted) : ''
-      const refresh = config.oauth2_refresh_token_encrypted ? decrypt(config.oauth2_refresh_token_encrypted) : ''
+      const secret = config.oauth2ClientSecretEncrypted ? decrypt(config.oauth2ClientSecretEncrypted) : ''
+      const refresh = config.oauth2RefreshTokenEncrypted ? decrypt(config.oauth2RefreshTokenEncrypted) : ''
 
-      const tempConfig = { ...config, oauth2_client_secret_encrypted: secret, oauth2_refresh_token_encrypted: refresh }
-      const result = await refreshOAuth2Token(tempConfig, provider)
+      const result = await refreshOAuth2Token({
+        oauth2ClientId: config.oauth2ClientId,
+        oauth2ClientSecretEncrypted: secret,
+        oauth2RefreshTokenEncrypted: refresh,
+        oauth2TenantId: config.oauth2TenantId,
+      }, provider)
       accessToken = result.accessToken
 
-      // Update cached token
-      db.prepare(`
-        UPDATE smtp_configs SET oauth2_access_token = ?, oauth2_token_expires = ?, updated_at = datetime('now')
-        WHERE id = ?
-      `).run(accessToken, result.expiresAt, configId)
+      db.update(smtpConfigs).set({
+        oauth2AccessToken: accessToken,
+        oauth2TokenExpires: result.expiresAt,
+        updatedAt: now(),
+      }).where(eq(smtpConfigs.id, configId)).run()
     }
   }
 
-  // Return cached or create new transporter
   if (transporterCache.has(configId)) {
     return { transporter: transporterCache.get(configId)!, config }
   }
@@ -116,40 +101,46 @@ async function getTransporter(configId: string): Promise<{ transporter: Transpor
   return { transporter, config }
 }
 
-export async function selectSmtpConfig(fromAddress: string): Promise<SmtpConfigRow> {
+export async function selectSmtpConfig(fromAddress: string): Promise<SmtpConfig> {
   const db = getDb()
 
-  // Try to find a config matching the from address
-  const matched = db.prepare(`
-    SELECT * FROM smtp_configs
-    WHERE from_address = ? OR from_address IS NULL
-    ORDER BY created_at DESC
-    LIMIT 1
-  `).get(fromAddress) as SmtpConfigRow | undefined
+  const matched = db.select()
+    .from(smtpConfigs)
+    .where(or(eq(smtpConfigs.fromAddress, fromAddress), isNull(smtpConfigs.fromAddress)))
+    .orderBy(desc(smtpConfigs.createdAt))
+    .limit(1)
+    .get()
 
   if (matched) return matched
 
-  // Fallback to any config
-  const fallback = db.prepare(`
-    SELECT * FROM smtp_configs
-    ORDER BY created_at DESC
-    LIMIT 1
-  `).get() as SmtpConfigRow | undefined
+  const fallback = db.select()
+    .from(smtpConfigs)
+    .orderBy(desc(smtpConfigs.createdAt))
+    .limit(1)
+    .get()
 
   if (!fallback) throw new Error('No SMTP configuration available. Please add one in the admin panel.')
   return fallback
 }
 
-export async function getSmtpConfigById(id: string): Promise<SmtpConfigRow> {
+export async function getSmtpConfigById(id: string): Promise<SmtpConfig> {
   const db = getDb()
-  const config = db.prepare('SELECT * FROM smtp_configs WHERE id = ?').get(id) as SmtpConfigRow | undefined
+  const config = db.select().from(smtpConfigs).where(eq(smtpConfigs.id, id)).get()
   if (!config) throw new Error(`SMTP provider not found: ${id}`)
   return config
 }
 
-export async function listSmtpConfigs(): Promise<Array<{ id: string; name: string; host: string; from_address: string | null }>> {
+export async function listSmtpConfigs(): Promise<Array<{ id: string; name: string | null; host: string; from_address: string | null }>> {
   const db = getDb()
-  return db.prepare('SELECT id, name, host, from_address FROM smtp_configs ORDER BY created_at DESC').all() as any[]
+  return db.select({
+    id: smtpConfigs.id,
+    name: smtpConfigs.name,
+    host: smtpConfigs.host,
+    from_address: smtpConfigs.fromAddress,
+  })
+    .from(smtpConfigs)
+    .orderBy(desc(smtpConfigs.createdAt))
+    .all()
 }
 
 export async function sendEmail(

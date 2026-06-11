@@ -1,20 +1,30 @@
-import Database from 'better-sqlite3'
+import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { config } from '../config.js'
-import { runMigrations } from './migrations.js'
+import * as schema from './schema.js'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { join } from 'node:path'
 
-let db: Database.Database
+type DrizzleDb = ReturnType<typeof drizzle<typeof schema>>
 
-export function getDb(): Database.Database {
+let db: DrizzleDb
+
+export function getDb(): DrizzleDb {
   if (!db) {
     mkdirSync(dirname(config.dbPath), { recursive: true })
-    db = new Database(config.dbPath)
-    db.pragma('journal_mode = WAL')
-    db.pragma('foreign_keys = ON')
-    db.pragma('busy_timeout = 5000')
+
+    db = drizzle(config.dbPath, { schema })
+
+    // Pragmas via $client
+    db.$client.pragma('journal_mode = WAL')
+    db.$client.pragma('foreign_keys = ON')
+    db.$client.pragma('busy_timeout = 5000')
+
+    // Auto-run migrations on startup
     try {
-      runMigrations(db)
+      const migrationsFolder = join(import.meta.dirname, 'migrations')
+      migrate(db, { migrationsFolder })
     } catch (err) {
       console.error('[db] Migration failed:', err)
       throw err

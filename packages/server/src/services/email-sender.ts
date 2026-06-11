@@ -1,5 +1,8 @@
 import { nanoid } from 'nanoid'
+import { eq, sql } from 'drizzle-orm'
 import { getDb } from '../db/index.js'
+import { emailLogs, analyticsDaily } from '../db/schema.js'
+import { now } from '../db/timestamp.js'
 import { selectSmtpConfig, getSmtpConfigById, sendEmail } from '../smtp/manager.js'
 
 export interface SendEmailInput {
@@ -46,28 +49,29 @@ export async function processSendEmail(
 
   // Check idempotency
   if (idempotencyKey) {
-    const existing = db.prepare('SELECT id FROM email_logs WHERE idempotency_key = ?').get(idempotencyKey) as { id: string } | undefined
+    const existing = db.select({ id: emailLogs.id })
+      .from(emailLogs)
+      .where(eq(emailLogs.idempotencyKey, idempotencyKey))
+      .get()
     if (existing) return { id: existing.id }
   }
 
-  const emailId = nanoid(21) // Resend uses 21-char IDs
+  const emailId = nanoid(21)
   const toAddresses = toArray(input.to)
   const replyTo = toArray(input.reply_to)
 
-  // Select SMTP config: "auto" selects by from address, otherwise use provider ID directly
+  // Select SMTP config
   const fromParsed = parseFrom(input.from)
   const smtpConfig = input.provider === 'auto'
     ? await selectSmtpConfig(fromParsed.address)
     : await getSmtpConfigById(input.provider)
 
-  // Resolve from address:
-  //   SMTP config from_address set → use "from_name <from_address>"
-  //   SMTP config from_address empty → use client-provided from
+  // Resolve from address
   let fromAddress: string
-  if (smtpConfig.from_address) {
-    fromAddress = smtpConfig.from_name
-      ? `${smtpConfig.from_name} <${smtpConfig.from_address}>`
-      : smtpConfig.from_address
+  if (smtpConfig.fromAddress) {
+    fromAddress = smtpConfig.fromName
+      ? `${smtpConfig.fromName} <${smtpConfig.fromAddress}>`
+      : smtpConfig.fromAddress
   } else {
     fromAddress = input.from || smtpConfig.username || ''
     if (!fromAddress) {
@@ -101,60 +105,78 @@ export async function processSendEmail(
     }))
   }
 
-  // Log to database (lean — no content, no cc/bcc/headers/tags)
-  db.prepare(`
-    INSERT INTO email_logs (id, api_key_id, smtp_config_id, from_address, to_addresses,
-      subject, has_html, has_text, has_attachments, attachment_count, status, idempotency_key, scheduled_at, queued_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-  `).run(
-    emailId,
+  // Log to database
+  const ts = now()
+  db.insert(emailLogs).values({
+    id: emailId,
     apiKeyId,
-    smtpConfig.id,
+    smtpConfigId: smtpConfig.id,
     fromAddress,
-    JSON.stringify(toAddresses),
-    input.subject,
-    input.html ? 1 : 0,
-    input.text ? 1 : 0,
-    input.attachments?.length ? 1 : 0,
-    input.attachments?.length || 0,
-    'queued',
-    idempotencyKey || null,
-    input.scheduled_at || null,
-  )
+    toAddresses: JSON.stringify(toAddresses),
+    subject: input.subject,
+    hasHtml: input.html ? 1 : 0,
+    hasText: input.text ? 1 : 0,
+    hasAttachments: input.attachments?.length ? 1 : 0,
+    attachmentCount: input.attachments?.length || 0,
+    status: 'queued',
+    idempotencyKey: idempotencyKey || null,
+    scheduledAt: input.scheduled_at || null,
+    queuedAt: ts,
+    createdAt: ts,
+  }).run()
 
-  // Send immediately (or queue for scheduled)
+  // Send immediately
   try {
-    db.prepare('UPDATE email_logs SET status = \'sending\' WHERE id = ?').run(emailId)
+    db.update(emailLogs).set({ status: 'sending' }).where(eq(emailLogs.id, emailId)).run()
+
     const result = await sendEmail(smtpConfig.id, mailOptions)
 
-    db.prepare(`
-      UPDATE email_logs SET status = 'delivered', message_id = ?, sent_at = datetime('now')
-      WHERE id = ?
-    `).run(result.messageId, emailId)
+    db.update(emailLogs).set({
+      status: 'delivered',
+      messageId: result.messageId,
+      sentAt: now(),
+    }).where(eq(emailLogs.id, emailId)).run()
 
     // Update analytics
     const today = new Date().toISOString().slice(0, 10)
-    db.prepare(`
-      INSERT INTO analytics_daily (id, date, api_key_id, total_sent, total_delivered)
-      VALUES (?, ?, ?, 1, 1)
-      ON CONFLICT(date, api_key_id) DO UPDATE SET
-        total_sent = total_sent + 1, total_delivered = total_delivered + 1
-    `).run(nanoid(), today, apiKeyId)
+    db.insert(analyticsDaily).values({
+      id: nanoid(),
+      date: today,
+      apiKeyId,
+      totalSent: 1,
+      totalDelivered: 1,
+      createdAt: now(),
+    }).onConflictDoUpdate({
+      target: [analyticsDaily.date, analyticsDaily.apiKeyId],
+      set: {
+        totalSent: sql`${analyticsDaily.totalSent} + 1`,
+        totalDelivered: sql`${analyticsDaily.totalDelivered} + 1`,
+      },
+    }).run()
 
   } catch (err: any) {
-    db.prepare(`
-      UPDATE email_logs SET status = 'failed', error_message = ?, sent_at = datetime('now')
-      WHERE id = ?
-    `).run(err.message, emailId)
+    db.update(emailLogs).set({
+      status: 'failed',
+      errorMessage: err.message,
+      sentAt: now(),
+    }).where(eq(emailLogs.id, emailId)).run()
 
     // Update analytics
     const today = new Date().toISOString().slice(0, 10)
-    db.prepare(`
-      INSERT INTO analytics_daily (id, date, api_key_id, total_sent, total_failed)
-      VALUES (?, ?, ?, 1, 1)
-      ON CONFLICT(date, api_key_id) DO UPDATE SET
-        total_sent = total_sent + 1, total_failed = total_failed + 1
-    `).run(nanoid(), today, apiKeyId)
+    db.insert(analyticsDaily).values({
+      id: nanoid(),
+      date: today,
+      apiKeyId,
+      totalSent: 1,
+      totalFailed: 1,
+      createdAt: now(),
+    }).onConflictDoUpdate({
+      target: [analyticsDaily.date, analyticsDaily.apiKeyId],
+      set: {
+        totalSent: sql`${analyticsDaily.totalSent} + 1`,
+        totalFailed: sql`${analyticsDaily.totalFailed} + 1`,
+      },
+    }).run()
 
     throw err
   }

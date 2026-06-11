@@ -1,4 +1,9 @@
-import type { SmtpConfigRow } from './manager.js'
+interface OAuth2Config {
+  oauth2ClientId: string | null
+  oauth2ClientSecretEncrypted: string  // already decrypted by caller
+  oauth2RefreshTokenEncrypted: string  // already decrypted by caller
+  oauth2TenantId: string | null
+}
 
 interface OAuth2TokenResponse {
   access_token: string
@@ -14,13 +19,13 @@ interface OAuth2TokenResponse {
  * - Generic OAuth2 (custom token_url)
  */
 export async function refreshOAuth2Token(
-  config: SmtpConfigRow,
+  config: OAuth2Config,
   provider: 'microsoft' | 'google' | 'generic' = 'generic',
   tokenUrl?: string,
 ): Promise<{ accessToken: string; expiresAt: number }> {
-  const clientId = config.oauth2_client_id
-  const clientSecret = config.oauth2_client_secret_encrypted
-  const refreshToken = config.oauth2_refresh_token_encrypted
+  const clientId = config.oauth2ClientId
+  const clientSecret = config.oauth2ClientSecretEncrypted
+  const refreshToken = config.oauth2RefreshTokenEncrypted
 
   if (!clientId || !clientSecret || !refreshToken) {
     throw new Error('OAuth2 configuration incomplete: missing client_id, client_secret, or refresh_token')
@@ -31,7 +36,7 @@ export async function refreshOAuth2Token(
 
   switch (provider) {
     case 'microsoft':
-      url = `https://login.microsoftonline.com/${config.oauth2_tenant_id || 'common'}/oauth2/v2.0/token`
+      url = `https://login.microsoftonline.com/${config.oauth2TenantId || 'common'}/oauth2/v2.0/token`
       params.set('grant_type', 'refresh_token')
       params.set('client_id', clientId)
       params.set('client_secret', clientSecret)

@@ -1,8 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
+import { eq, desc } from 'drizzle-orm'
 import { authenticateAdmin } from '../auth/middleware.js'
 import { getDb } from '../db/index.js'
+import { apiKeys } from '../db/schema.js'
+import { now } from '../db/timestamp.js'
 import { hashKey, generateApiKey } from '../crypto.js'
 
 const apiKeySchema = z.object({
@@ -15,10 +18,17 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
     if (!(await authenticateAdmin(request, reply))) return
 
     const db = getDb()
-    const rows = db.prepare(`
-      SELECT id, name, key_prefix, is_active, last_used_at, created_at
-      FROM api_keys ORDER BY created_at DESC
-    `).all()
+    const rows = db.select({
+      id: apiKeys.id,
+      name: apiKeys.name,
+      key_prefix: apiKeys.keyPrefix,
+      is_active: apiKeys.isActive,
+      last_used_at: apiKeys.lastUsedAt,
+      created_at: apiKeys.createdAt,
+    })
+      .from(apiKeys)
+      .orderBy(desc(apiKeys.createdAt))
+      .all()
     return reply.send(rows)
   })
 
@@ -37,15 +47,18 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
     const keyPrefix = fullKey.slice(0, 10) + '...'
 
     const db = getDb()
-    db.prepare(`
-      INSERT INTO api_keys (id, name, key_hash, key_prefix)
-      VALUES (?, ?, ?, ?)
-    `).run(id, parsed.data.name, keyHash, keyPrefix)
+    db.insert(apiKeys).values({
+      id,
+      name: parsed.data.name,
+      keyHash,
+      keyPrefix,
+      createdAt: now(),
+    }).run()
 
     return reply.code(201).send({
       id,
       name: parsed.data.name,
-      key: fullKey, // Only returned on creation
+      key: fullKey,
       key_prefix: keyPrefix,
     })
   })
@@ -55,10 +68,17 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
     if (!(await authenticateAdmin(request, reply))) return
 
     const db = getDb()
-    const row = db.prepare(`
-      SELECT id, name, key_prefix, is_active, last_used_at, created_at
-      FROM api_keys WHERE id = ?
-    `).get(request.params.id)
+    const row = db.select({
+      id: apiKeys.id,
+      name: apiKeys.name,
+      key_prefix: apiKeys.keyPrefix,
+      is_active: apiKeys.isActive,
+      last_used_at: apiKeys.lastUsedAt,
+      created_at: apiKeys.createdAt,
+    })
+      .from(apiKeys)
+      .where(eq(apiKeys.id, request.params.id))
+      .get()
     if (!row) return reply.code(404).send({ error: 'Not found' })
     return reply.send(row)
   })
@@ -68,7 +88,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
     if (!(await authenticateAdmin(request, reply))) return
 
     const db = getDb()
-    db.prepare('DELETE FROM api_keys WHERE id = ?').run(request.params.id)
+    db.delete(apiKeys).where(eq(apiKeys.id, request.params.id)).run()
     return reply.send({ deleted: true })
   })
 
@@ -77,10 +97,16 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
     if (!(await authenticateAdmin(request, reply))) return
 
     const db = getDb()
-    const row = db.prepare('SELECT id, is_active FROM api_keys WHERE id = ?').get(request.params.id) as any
+    const row = db.select({ id: apiKeys.id, isActive: apiKeys.isActive })
+      .from(apiKeys)
+      .where(eq(apiKeys.id, request.params.id))
+      .get()
     if (!row) return reply.code(404).send({ error: 'Not found' })
 
-    db.prepare('UPDATE api_keys SET is_active = ? WHERE id = ?').run(row.is_active ? 0 : 1, request.params.id)
-    return reply.send({ id: row.id, is_active: !row.is_active })
+    db.update(apiKeys)
+      .set({ isActive: row.isActive ? 0 : 1 })
+      .where(eq(apiKeys.id, request.params.id))
+      .run()
+    return reply.send({ id: row.id, is_active: !row.isActive })
   })
 }
