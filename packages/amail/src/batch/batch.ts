@@ -7,6 +7,10 @@ import type {
 } from './interfaces/create-batch-options.interface.js';
 
 function parseEmailToApiOptions(email: any) {
+  const providerId = email.providerId ?? email.provider;
+  if (!providerId) {
+    throw new Error('Missing providerId. Set `providerId` to the SMTP provider ID.');
+  }
   return {
     from: email.from,
     to: email.to,
@@ -26,7 +30,7 @@ function parseEmailToApiOptions(email: any) {
       content_id: a.contentId,
     })),
     scheduled_at: email.scheduledAt,
-    provider: email.provider,
+    provider_id: providerId,
   };
 }
 

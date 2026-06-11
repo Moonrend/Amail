@@ -19,6 +19,7 @@ const amail = new Amail('am_your_api_key', {
 
 // Send an email
 const { data, error } = await amail.emails.send({
+  providerId: 'smtp_config_id',
   from: 'you@your-domain.com',
   to: 'user@example.com',
   subject: 'Hello World',
@@ -48,8 +49,11 @@ Create a new Amail client.
 
 Send a single email. Alias for `emails.create()`.
 
+`providerId` is required and should be the SMTP provider ID returned by `amail.emails.providers()`.
+
 ```typescript
 const { data, error } = await amail.emails.send({
+  providerId: 'smtp_config_id',
   from: 'Name <sender@domain.com>',
   to: ['user1@example.com', 'user2@example.com'],
   subject: 'Hello',
@@ -100,8 +104,8 @@ Send multiple emails in a single request. Alias for `batch.create()`.
 
 ```typescript
 const { data, error } = await amail.batch.send([
-  { from: 'you@domain.com', to: 'user1@example.com', subject: 'Hello 1', html: '<p>Hi 1</p>' },
-  { from: 'you@domain.com', to: 'user2@example.com', subject: 'Hello 2', html: '<p>Hi 2</p>' },
+  { providerId: 'smtp_config_id', from: 'you@domain.com', to: 'user1@example.com', subject: 'Hello 1', html: '<p>Hi 1</p>' },
+  { providerId: 'smtp_config_id', from: 'you@domain.com', to: 'user2@example.com', subject: 'Hello 2', html: '<p>Hi 2</p>' },
 ]);
 ```
 

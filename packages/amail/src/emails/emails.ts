@@ -24,6 +24,10 @@ import type {
 } from './interfaces/list-providers.interface.js';
 
 function parseEmailToApiOptions(email: CreateEmailOptions) {
+  const providerId = email.providerId ?? email.provider;
+  if (!providerId) {
+    throw new Error('Missing providerId. Set `providerId` to the SMTP provider ID.');
+  }
   return {
     from: email.from,
     to: email.to,
@@ -43,7 +47,7 @@ function parseEmailToApiOptions(email: CreateEmailOptions) {
       content_id: a.contentId,
     })),
     scheduled_at: email.scheduledAt,
-    provider: email.provider,
+    provider_id: providerId,
   };
 }
 
