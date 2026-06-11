@@ -118,22 +118,28 @@ async function sendFlow(rl: Interface, config: Config): Promise<void> {
   console.log('── 📨 发送邮件 ──────────────────────────\n');
 
   // Provider selection
-  let provider: string | undefined;
+  let providerId: string | undefined;
   const providersRes = await apiCall(config, 'GET', '/emails/providers');
   if (providersRes.ok && providersRes.data?.data?.length > 0) {
     const providers = providersRes.data.data;
     console.log('  可用发件通道 (Provider):');
-    console.log('    0. 自动选择');
     providers.forEach((p: any, i: number) => {
       console.log(`    ${i + 1}. ${p.name} (${p.host}${p.from_address ? ', ' + p.from_address : ''})`);
     });
-    const providerChoice = await ask(rl, '  选择 (默认 0 自动): ', '0');
-    const idx = parseInt(providerChoice, 10);
-    if (idx > 0 && idx <= providers.length) {
-      provider = providers[idx - 1].id;
-      console.log(`  ✅ 已选择: ${providers[idx - 1].name}`);
+    while (!providerId) {
+      const providerChoice = await ask(rl, '  选择 Provider 编号: ');
+      const idx = parseInt(providerChoice, 10);
+      if (idx > 0 && idx <= providers.length) {
+        providerId = providers[idx - 1].id;
+        console.log(`  ✅ 已选择: ${providers[idx - 1].name}`);
+      } else {
+        console.log('  ⚠️  请选择有效的 Provider 编号');
+      }
     }
     console.log();
+  } else {
+    console.log('  ❌ 未找到可用 Provider，请先在管理后台添加 SMTP 配置');
+    return;
   }
 
   // From (optional if provider has from_address)
@@ -175,7 +181,7 @@ async function sendFlow(rl: Interface, config: Config): Promise<void> {
     to: toList.length === 1 ? toList[0] : toList,
     subject,
   };
-  if (provider) payload.provider = provider;
+  payload.provider_id = providerId;
   if (html) payload.html = html;
   if (text) payload.text = text;
   if (cc) {
@@ -190,7 +196,7 @@ async function sendFlow(rl: Interface, config: Config): Promise<void> {
 
   // Confirm
   console.log('\n── 📋 邮件摘要 ──────────────────────────');
-  if (provider) console.log(`  通道:    ${provider}`);
+  console.log(`  通道ID:  ${providerId}`);
   console.log(`  发件人:  ${from}`);
   console.log(`  收件人:  ${to}`);
   console.log(`  主题:    ${subject}`);
