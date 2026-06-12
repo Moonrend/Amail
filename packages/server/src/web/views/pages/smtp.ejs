@@ -392,8 +392,8 @@ function saveConfig() {
     oauth2_client_secret: document.getElementById('fCsec').value || undefined,
     oauth2_refresh_token: document.getElementById('fRtok').value || undefined,
     oauth2_tenant_id: document.getElementById('fTid').value || undefined,
-    from_address: document.getElementById('fFrom').value || undefined,
-    from_name: document.getElementById('fFname').value || undefined,
+    from_address: document.getElementById('fFrom').value || null,
+    from_name: document.getElementById('fFname').value || null,
   };
 
   // Remove secure field if "none"

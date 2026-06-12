@@ -27,8 +27,8 @@ const smtpConfigSchema = z.object({
   oauth2_client_secret: z.string().optional(),
   oauth2_refresh_token: z.string().optional(),
   oauth2_tenant_id: z.string().optional(),
-  from_address: z.string().optional(),
-  from_name: z.string().optional(),
+  from_address: z.string().nullish(),
+  from_name: z.string().nullish(),
 })
 
 const smtpConfigUpdateSchema = smtpConfigSchema.omit({ name: true }).partial()
