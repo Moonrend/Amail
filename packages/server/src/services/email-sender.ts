@@ -4,6 +4,7 @@ import { getDb } from '../db/index.js'
 import { emailLogs, analyticsDaily } from '../db/schema.js'
 import { now } from '../db/timestamp.js'
 import { selectSmtpConfig, getSmtpConfigById, sendEmail } from '../smtp/manager.js'
+import { validationError } from '../errors.js'
 
 export interface SendEmailInput {
   from: string
@@ -38,6 +39,30 @@ function parseFrom(from: string): { name?: string; address: string } {
     return { name: match[1].trim() || undefined, address: match[2].trim() }
   }
   return { address: from.trim() }
+}
+
+function recordAnalytics(db: ReturnType<typeof getDb>, apiKeyId: string, delivered: boolean): void {
+  const today = new Date().toISOString().slice(0, 10)
+  db.insert(analyticsDaily).values({
+    id: nanoid(),
+    date: today,
+    apiKeyId,
+    totalSent: 1,
+    totalDelivered: delivered ? 1 : 0,
+    totalFailed: delivered ? 0 : 1,
+    createdAt: now(),
+  }).onConflictDoUpdate({
+    target: [analyticsDaily.date, analyticsDaily.apiKeyId],
+    set: {
+      totalSent: sql`${analyticsDaily.totalSent} + 1`,
+      totalDelivered: delivered
+        ? sql`${analyticsDaily.totalDelivered} + 1`
+        : sql`${analyticsDaily.totalDelivered}`,
+      totalFailed: delivered
+        ? sql`${analyticsDaily.totalFailed}`
+        : sql`${analyticsDaily.totalFailed} + 1`,
+    },
+  }).run()
 }
 
 export async function processSendEmail(
@@ -75,7 +100,7 @@ export async function processSendEmail(
   } else {
     fromAddress = input.from || smtpConfig.username || ''
     if (!fromAddress) {
-      throw new Error('No sender address: provide a "from" field or configure from_address on the SMTP provider')
+      throw validationError('No sender address: provide a "from" field or configure from_address on the SMTP provider')
     }
   }
 
@@ -131,52 +156,24 @@ export async function processSendEmail(
 
     const result = await sendEmail(smtpConfig.id, mailOptions)
 
-    db.update(emailLogs).set({
-      status: 'delivered',
-      messageId: result.messageId,
-      sentAt: now(),
-    }).where(eq(emailLogs.id, emailId)).run()
-
-    // Update analytics
-    const today = new Date().toISOString().slice(0, 10)
-    db.insert(analyticsDaily).values({
-      id: nanoid(),
-      date: today,
-      apiKeyId,
-      totalSent: 1,
-      totalDelivered: 1,
-      createdAt: now(),
-    }).onConflictDoUpdate({
-      target: [analyticsDaily.date, analyticsDaily.apiKeyId],
-      set: {
-        totalSent: sql`${analyticsDaily.totalSent} + 1`,
-        totalDelivered: sql`${analyticsDaily.totalDelivered} + 1`,
-      },
-    }).run()
+    db.transaction(() => {
+      db.update(emailLogs).set({
+        status: 'delivered',
+        messageId: result.messageId,
+        sentAt: now(),
+      }).where(eq(emailLogs.id, emailId)).run()
+      recordAnalytics(db, apiKeyId, true)
+    })
 
   } catch (err: any) {
-    db.update(emailLogs).set({
-      status: 'failed',
-      errorMessage: err.message,
-      sentAt: now(),
-    }).where(eq(emailLogs.id, emailId)).run()
-
-    // Update analytics
-    const today = new Date().toISOString().slice(0, 10)
-    db.insert(analyticsDaily).values({
-      id: nanoid(),
-      date: today,
-      apiKeyId,
-      totalSent: 1,
-      totalFailed: 1,
-      createdAt: now(),
-    }).onConflictDoUpdate({
-      target: [analyticsDaily.date, analyticsDaily.apiKeyId],
-      set: {
-        totalSent: sql`${analyticsDaily.totalSent} + 1`,
-        totalFailed: sql`${analyticsDaily.totalFailed} + 1`,
-      },
-    }).run()
+    db.transaction(() => {
+      db.update(emailLogs).set({
+        status: 'failed',
+        errorMessage: err.message,
+        sentAt: now(),
+      }).where(eq(emailLogs.id, emailId)).run()
+      recordAnalytics(db, apiKeyId, false)
+    })
 
     throw err
   }

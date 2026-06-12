@@ -23,8 +23,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Test server
+        run: npm --workspace=@amail/server run test
+
       - name: Build all packages
         run: npm run build --workspaces --if-present
+
+      - name: Build documentation
+        run: npm run docs:build
 
       - name: Verify npm pack (amail)
         run: cd packages/amail && npm pack --dry-run

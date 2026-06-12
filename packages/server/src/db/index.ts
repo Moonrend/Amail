@@ -10,16 +10,21 @@ type DrizzleDb = ReturnType<typeof drizzle<typeof schema>>
 
 let db: DrizzleDb
 
+function configureSqlite(client: DrizzleDb['$client']): void {
+  client.pragma('journal_mode = WAL')
+  client.pragma('foreign_keys = ON')
+  client.pragma('busy_timeout = 5000')
+  client.pragma('synchronous = NORMAL')
+  client.pragma('temp_store = MEMORY')
+}
+
 export function getDb(): DrizzleDb {
   if (!db) {
     mkdirSync(dirname(config.dbPath), { recursive: true })
 
     db = drizzle(config.dbPath, { schema })
 
-    // Pragmas via $client
-    db.$client.pragma('journal_mode = WAL')
-    db.$client.pragma('foreign_keys = ON')
-    db.$client.pragma('busy_timeout = 5000')
+    configureSqlite(db.$client)
 
     // Auto-run migrations on startup
     try {

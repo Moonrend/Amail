@@ -23,8 +23,9 @@
   ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc && cp -r src/web dist/web && cp -r src/db/migrations dist/db/migrations",
+    "build": "tsc && node ../../scripts/copy-server-assets.js",
     "start": "node dist/index.js",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "db:generate": "drizzle-kit generate --config ../../drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config ../../drizzle.config.ts",
     "db:studio": "drizzle-kit studio --config ../../drizzle.config.ts"

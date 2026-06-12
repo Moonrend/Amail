@@ -1,35 +1,11 @@
 import type { FastifyInstance } from 'fastify'
-import { z } from 'zod'
 import { eq, and, gt, lt, desc, asc } from 'drizzle-orm'
 import { authenticateApi } from '../auth/middleware.js'
 import { processSendEmail, type SendEmailInput } from '../services/email-sender.js'
 import { listSmtpConfigs } from '../smtp/manager.js'
 import { getDb } from '../db/index.js'
 import { emailLogs } from '../db/schema.js'
-
-const sendEmailSchema = z.object({
-  from: z.string().optional(),
-  to: z.union([z.string(), z.array(z.string()).max(50)]),
-  subject: z.string().min(1),
-  html: z.string().optional(),
-  text: z.string().optional(),
-  cc: z.union([z.string(), z.array(z.string())]).optional(),
-  bcc: z.union([z.string(), z.array(z.string())]).optional(),
-  reply_to: z.union([z.string(), z.array(z.string())]).optional(),
-  headers: z.record(z.string()).optional(),
-  tags: z.array(z.object({ name: z.string(), value: z.string() })).optional(),
-  attachments: z.array(z.object({
-    content: z.union([z.string(), z.instanceof(Buffer)]).optional(),
-    filename: z.string().optional(),
-    path: z.string().optional(),
-    content_type: z.string().optional(),
-    content_id: z.string().optional(),
-  })).optional(),
-  scheduled_at: z.string().optional(),
-  provider: z.string().min(1),
-})
-
-const batchEmailSchema = z.array(sendEmailSchema).max(100)
+import { assertParsed, parseBatchEmailBody, parseSendEmailBody } from './email-schema.js'
 
 export async function emailRoutes(app: FastifyInstance): Promise<void> {
   // POST /emails — Send a single email (Resend-compatible)
@@ -37,28 +13,12 @@ export async function emailRoutes(app: FastifyInstance): Promise<void> {
     const apiKey = await authenticateApi(request, reply)
     if (!apiKey) return
 
-    const parsed = sendEmailSchema.safeParse(request.body)
-    if (!parsed.success) {
-      return reply.code(422).send({
-        statusCode: 422,
-        name: 'validation_error',
-        message: parsed.error.issues.map(i => i.message).join(', '),
-      })
-    }
+    const data = assertParsed(parseSendEmailBody(request.body))
 
     const idempotencyKey = request.headers['idempotency-key'] as string | undefined
 
-    try {
-      const result = await processSendEmail(parsed.data as SendEmailInput, apiKey.id, idempotencyKey)
-      return reply.code(200).send({ id: result.id })
-    } catch (err: any) {
-      request.log.error(err, 'Failed to send email')
-      return reply.code(500).send({
-        statusCode: 500,
-        name: 'application_error',
-        message: err.message || 'Internal server error',
-      })
-    }
+    const result = await processSendEmail(data as SendEmailInput, apiKey.id, idempotencyKey)
+    return reply.code(200).send({ id: result.id })
   })
 
   // POST /emails/batch — Send batch emails (Resend-compatible)
@@ -66,21 +26,15 @@ export async function emailRoutes(app: FastifyInstance): Promise<void> {
     const apiKey = await authenticateApi(request, reply)
     if (!apiKey) return
 
-    const parsed = batchEmailSchema.safeParse(request.body)
-    if (!parsed.success) {
-      return reply.code(422).send({
-        statusCode: 422,
-        name: 'validation_error',
-        message: parsed.error.issues.map(i => i.message).join(', '),
-      })
-    }
+    const emails = assertParsed(parseBatchEmailBody(request.body))
 
     const results: Array<{ id: string }> = []
-    for (const emailInput of parsed.data) {
+    for (const emailInput of emails) {
       try {
         const result = await processSendEmail(emailInput as SendEmailInput, apiKey.id)
         results.push({ id: result.id })
-      } catch {
+      } catch (err) {
+        request.log.warn({ err }, 'Skipped failed batch email')
         // Continue with remaining emails
       }
     }

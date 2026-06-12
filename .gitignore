@@ -64,3 +64,7 @@ data/
 *.db
 *.db-journal
 *.db-wal
+.superpowers/
+.vitepress-runtime/
+
+docs/.vitepress/dist/

@@ -1,14 +1,14 @@
-# amail
+# @wydev/amail
 
-Official Node.js SDK for [Amail](https://github.com/ZeroCat/Amail) — self-hosted email proxy gateway with Resend-compatible API.
+Amail Node SDK。
 
-## Installation
+## 安装
 
 ```bash
 npm install @wydev/amail
 ```
 
-## Quick Start
+## 使用
 
 ```typescript
 import { Amail } from '@wydev/amail';
@@ -18,18 +18,17 @@ const amail = new Amail('am_your_api_key', {
   providerId: 'smtp_config_id',
 });
 
-// Send an email
 const { data, error } = await amail.emails.send({
   from: 'you@your-domain.com',
   to: 'user@example.com',
-  subject: 'Hello World',
-  html: '<h1>Hello!</h1>',
+  subject: '你好',
+  html: '<h1>测试邮件</h1>',
 });
 
 if (error) {
   console.error(error);
 } else {
-  console.log('Email sent:', data.id);
+  console.log('已发送:', data.id);
 }
 ```
 
@@ -37,45 +36,43 @@ if (error) {
 
 ### `new Amail(key?, options?)`
 
-Create a new Amail client.
+创建客户端。
 
-- `key` — API key (starts with `am_`). Falls back to `AMAIL_API_KEY` env var.
-- `options.baseUrl` — Amail server URL. Falls back to `AMAIL_BASE_URL` env var, then `http://localhost:4000`.
-- `options.userAgent` — Custom User-Agent header.
-- `options.providerId` — Default SMTP provider ID. Falls back to `AMAIL_PROVIDER_ID`.
+- `key`：API Key，可从 `AMAIL_API_KEY` 读取。
+- `options.baseUrl`：服务地址，默认 `http://localhost:3000`。
+- `options.userAgent`：自定义 User-Agent。
+- `options.providerId`：默认 SMTP Provider ID，可从 `AMAIL_PROVIDER_ID` 读取。
 
 ### `amail.emails`
 
 #### `emails.send(payload, options?)`
 
-Send a single email. Alias for `emails.create()`.
+发送单封邮件。等同 `emails.create()`。
 
-`providerId` can be provided in each payload, or set once in `new Amail(..., { providerId })`.
+`providerId` 可在初始化时设置，也可单次发送传入。
 
 ```typescript
 const { data, error } = await amail.emails.send({
   providerId: 'smtp_config_id',
-  from: 'Name <sender@domain.com>',
+  from: '示例 <sender@domain.com>',
   to: ['user1@example.com', 'user2@example.com'],
-  subject: 'Hello',
-  html: '<p>Hello World</p>',
-  text: 'Hello World',
+  subject: '你好',
+  html: '<p>测试邮件</p>',
+  text: '测试邮件',
   cc: 'cc@example.com',
   bcc: 'bcc@example.com',
   replyTo: 'reply@example.com',
-  headers: { 'X-Custom': 'value' },
-  tags: [{ name: 'category', value: 'welcome' }],
+  headers: { 'X-Trace': 'demo' },
+  tags: [{ name: 'type', value: 'test' }],
   scheduledAt: '2024-12-01T12:00:00Z',
 }, {
   idempotencyKey: 'unique-key-123',
 });
 ```
 
-If `providerId` is missing in both payload and initialization options, the SDK will throw an error before making the request.
-
 #### `emails.get(id)`
 
-Get an email by ID.
+查询邮件。
 
 ```typescript
 const { data, error } = await amail.emails.get('email_id');
@@ -83,17 +80,16 @@ const { data, error } = await amail.emails.get('email_id');
 
 #### `emails.list(options?)`
 
-List emails with cursor-based pagination.
+分页列表。
 
 ```typescript
 const { data, error } = await amail.emails.list({ limit: 10 });
-// Next page:
 const next = await amail.emails.list({ limit: 10, after: data.data[data.data.length - 1].id });
 ```
 
 #### `emails.cancel(id)`
 
-Cancel a queued or scheduled email.
+取消排队或定时邮件。
 
 ```typescript
 const { data, error } = await amail.emails.cancel('email_id');
@@ -103,47 +99,41 @@ const { data, error } = await amail.emails.cancel('email_id');
 
 #### `batch.send(payload, options?)`
 
-Send multiple emails in a single request. Alias for `batch.create()`.
+批量发送。等同 `batch.create()`。
 
 ```typescript
 const { data, error } = await amail.batch.send([
-  { providerId: 'smtp_config_id', from: 'you@domain.com', to: 'user1@example.com', subject: 'Hello 1', html: '<p>Hi 1</p>' },
-  { providerId: 'smtp_config_id', from: 'you@domain.com', to: 'user2@example.com', subject: 'Hello 2', html: '<p>Hi 2</p>' },
+  { providerId: 'smtp_config_id', from: 'you@domain.com', to: 'user1@example.com', subject: '你好 1', html: '<p>测试邮件 1</p>' },
+  { providerId: 'smtp_config_id', from: 'you@domain.com', to: 'user2@example.com', subject: '你好 2', html: '<p>测试邮件 2</p>' },
 ]);
 ```
 
-## Error Handling
+## 错误
 
-All methods return a `{ data, error }` result type. They never throw on API errors.
+API 错误返回 `{ data, error }`。
 
 ```typescript
 const { data, error } = await amail.emails.send({ ... });
 
 if (error) {
-  console.log(error.statusCode); // 422
-  console.log(error.name);       // 'validation_error'
-  console.log(error.message);    // 'Invalid from address'
+  console.log(error.statusCode);
+  console.log(error.name);
+  console.log(error.message);
 }
 ```
 
-## Compatibility
-
-This SDK is designed to be a drop-in replacement for the [Resend Node.js SDK](https://github.com/resend/resend-node). If you're migrating from Resend, simply change:
+## 从 Resend 迁移
 
 ```typescript
-// Before
 import { Resend } from 'resend';
 const resend = new Resend('re_xxx');
 
-// After
 import { Amail } from '@wydev/amail';
 const amail = new Amail('am_xxx', { baseUrl: 'https://amail.your-domain.com' });
 ```
 
-The API surface for `emails.send`, `emails.get`, `emails.list`, `emails.cancel`, and `batch.send` is identical.
+Amail 需要指定 `providerId`。
 
-Note: Resend does not require selecting an SMTP provider, but Amail does. Provide `providerId` in payloads or set a default via `new Amail(..., { providerId })`.
-
-## License
+## 许可证
 
 MIT

@@ -6,15 +6,35 @@ import { smtpConfigs, type SmtpConfig } from '../db/schema.js'
 import { now } from '../db/timestamp.js'
 import { decrypt, encrypt } from '../crypto.js'
 import { refreshOAuth2Token, isTokenExpired } from './oauth.js'
+import { config as appConfig } from '../config.js'
+import { notFound } from '../errors.js'
 
 // Connection pool: configId -> transporter
 const transporterCache = new Map<string, Transporter>()
 
-function buildTransporterOptions(config: SmtpConfig, accessToken?: string): Record<string, unknown> {
+export interface SmtpPoolOptions {
+  maxConnections: number
+  maxMessages: number
+  connectionTimeoutMs: number
+  greetingTimeoutMs: number
+  socketTimeoutMs: number
+}
+
+export function buildTransporterOptions(
+  config: SmtpConfig,
+  pool: SmtpPoolOptions = appConfig.smtpPool,
+  accessToken?: string,
+): Record<string, unknown> {
   const opts: Record<string, unknown> = {
     host: config.host,
     port: config.port,
     secure: config.secure === 1,
+    pool: true,
+    maxConnections: pool.maxConnections,
+    maxMessages: pool.maxMessages,
+    connectionTimeout: pool.connectionTimeoutMs,
+    greetingTimeout: pool.greetingTimeoutMs,
+    socketTimeout: pool.socketTimeoutMs,
   }
 
   switch (config.authType) {
@@ -58,7 +78,7 @@ function buildTransporterOptions(config: SmtpConfig, accessToken?: string): Reco
 async function getTransporter(configId: string): Promise<{ transporter: Transporter; config: SmtpConfig }> {
   const db = getDb()
   const config = db.select().from(smtpConfigs).where(eq(smtpConfigs.id, configId)).get()
-  if (!config) throw new Error(`SMTP config not found: ${configId}`)
+  if (!config) throw notFound(`SMTP config not found: ${configId}`)
 
   // Handle OAuth2 token refresh
   let accessToken = config.oauth2AccessToken
@@ -94,7 +114,7 @@ async function getTransporter(configId: string): Promise<{ transporter: Transpor
     return { transporter: transporterCache.get(configId)!, config }
   }
 
-  const opts = buildTransporterOptions(config, accessToken || undefined)
+  const opts = buildTransporterOptions(config, appConfig.smtpPool, accessToken || undefined)
   const transporter = nodemailer.createTransport(opts)
   transporterCache.set(configId, transporter)
 
@@ -119,14 +139,14 @@ export async function selectSmtpConfig(fromAddress: string): Promise<SmtpConfig>
     .limit(1)
     .get()
 
-  if (!fallback) throw new Error('No SMTP configuration available. Please add one in the admin panel.')
+  if (!fallback) throw notFound('No SMTP configuration available. Please add one in the admin panel.')
   return fallback
 }
 
 export async function getSmtpConfigById(id: string): Promise<SmtpConfig> {
   const db = getDb()
   const config = db.select().from(smtpConfigs).where(eq(smtpConfigs.id, id)).get()
-  if (!config) throw new Error(`SMTP provider not found: ${id}`)
+  if (!config) throw notFound(`SMTP provider not found: ${id}`)
   return config
 }
 

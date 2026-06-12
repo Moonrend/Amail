@@ -10,6 +10,7 @@ import { emailRoutes } from './api/emails.js'
 import { smtpConfigRoutes } from './api/smtp-configs.js'
 import { apiKeyRoutes } from './api/api-keys.js'
 import { analyticsRoutes } from './api/analytics.js'
+import { registerErrorHandler } from './errors.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -17,6 +18,7 @@ async function main() {
   const app = Fastify({
     logger: { level: config.logLevel },
   })
+  registerErrorHandler(app)
 
   await app.register(cors, { origin: true })
 
