@@ -17,7 +17,6 @@ export default defineConfig({
         items: [
           { text: '快速开始', link: '/guide/getting-started' },
           { text: '配置', link: '/guide/configuration' },
-          { text: '结构', link: '/architecture' },
         ],
       },
       {

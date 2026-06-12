@@ -1,5 +1,7 @@
 # Node SDK
 
+推荐应用优先使用 SDK，而不是手写 HTTP 请求。
+
 安装：
 
 ```bash

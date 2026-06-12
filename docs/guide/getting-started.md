@@ -1,60 +1,83 @@
 # 快速开始
 
-## 安装
+<script setup>
+import EncryptionKeyGenerator from '../.vitepress/theme/components/EncryptionKeyGenerator.vue'
+</script>
 
-```bash
-npm install
+## 1. 创建 `docker-compose.yml`
+
+```yaml
+services:
+  amail:
+    image: sunwuyuan/amail:main
+    container_name: amail
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - amail-data:/data
+    environment:
+      - PORT=3000
+      - HOST=0.0.0.0
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - DB_PATH=/data/amail.db
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+
+volumes:
+  amail-data:
 ```
 
-## 配置
-
-```bash
-cp .env.example .env
-```
-
-`.env` 至少设置：
+## 2. 创建 `.env`
 
 ```ini
 ADMIN_TOKEN=your-admin-token
 ENCRYPTION_KEY=64位hex字符串
+LOG_LEVEL=info
 ```
 
-生成 `ENCRYPTION_KEY`：
+`ENCRYPTION_KEY`生成：
+
+<EncryptionKeyGenerator />
+
+## 3. 启动
 
 ```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+docker compose up -d
 ```
 
-## 启动
-
-```bash
-npm run dev
-```
+## 4. 配置后台
 
 打开 `http://localhost:3000`：
 
 1. 输入 `ADMIN_TOKEN`
 2. 添加 SMTP 配置
 3. 创建 API Key
-4. 调用 API 发信
+4. 复制 API Key 和 SMTP Provider ID
 
-## 发信
+## 5. 使用 Node.js SDK 发信
 
 ```bash
-curl -X POST http://localhost:3000/emails \
-  -H "Authorization: Bearer am_your_api_key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "provider_id": "smtp_provider_id",
-    "from": "示例 <hello@example.com>",
-    "to": ["user@example.com"],
-    "subject": "你好",
-    "html": "<p>测试邮件</p>"
-  }'
+npm install @wydev/amail
 ```
 
-响应：
+```ts
+import { Amail } from '@wydev/amail'
 
-```json
-{ "id": "dReS1gNSsHB9xVqDfNHfP" }
+const amail = new Amail('am_your_api_key', {
+  baseUrl: 'http://localhost:3000',
+  providerId: 'smtp_provider_id',
+})
+
+await amail.emails.send({
+  from: '示例 <hello@example.com>',
+  to: 'user@example.com',
+  subject: '你好',
+  text: '测试邮件',
+})
 ```

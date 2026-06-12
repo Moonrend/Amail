@@ -1,5 +1,15 @@
 # 配置
 
+<script setup>
+import EncryptionKeyGenerator from '../.vitepress/theme/components/EncryptionKeyGenerator.vue'
+</script>
+
+## ENCRYPTION_KEY
+
+每次刷新页面都会生成新值：
+
+<EncryptionKeyGenerator />
+
 环境变量：
 
 | 变量 | 必填 | 默认值 | 说明 |
