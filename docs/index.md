@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Amail
   text: 自托管邮件代理网关
-  tagline: 用自己的 SMTP 服务提供 Resend 风格 API。
+  tagline: 将 SMTP 协议代理为 API 以在任何网络环境下发送邮件
   actions:
     - theme: brand
       text: 快速开始

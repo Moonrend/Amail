@@ -1,0 +1,155 @@
+<%- include('../partials/header', { title: '关于' }) %>
+
+<style>
+  .about-container {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 24px 16px;
+  }
+
+  .about-hero {
+    text-align: center;
+    padding: 32px 0 24px;
+  }
+
+  .about-hero h2 {
+    margin: 0 0 4px;
+    font-size: 24px;
+    font-weight: 600;
+  }
+
+  .about-hero p {
+    margin: 0;
+    color: rgba(255,255,255,0.6);
+    font-size: 14px;
+  }
+
+  .about-section {
+    margin-bottom: 16px;
+  }
+
+  .about-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: rgba(255,255,255,0.5);
+    padding: 0 16px 8px;
+  }
+
+  .about-card {
+    background: rgba(255,255,255,0.05);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .about-card mdui-list-item {
+    --mdui-list-item-padding-inline-start: 16px;
+    --mdui-list-item-padding-inline-end: 16px;
+  }
+
+  .about-card mdui-list-item + mdui-list-item {
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .about-link {
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .about-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    padding: 24px 0 8px;
+  }
+</style>
+
+<div class="about-container">
+  <div class="about-hero">
+    <h2>Amail</h2>
+    <p>自托管邮件代理网关</p>
+  </div>
+
+  <!-- 版本信息 -->
+  <div class="about-section">
+    <div class="about-section-title">服务器</div>
+    <div class="about-card">
+      <mdui-list>
+        <mdui-list-item icon="tag--rounded" description="当前运行版本">
+          <span id="serverVersion">加载中...</span>
+          <mdui-chip slot="end-icon" id="versionChip"  icon="check">
+            最新
+          </mdui-chip>
+        </mdui-list-item>
+      </mdui-list>
+    </div>
+  </div>
+
+  <!-- 项目信息 -->
+  <div class="about-section">
+    <div class="about-section-title">项目</div>
+    <div class="about-card">
+      <mdui-list>
+        <mdui-list-item icon="code" description="MIT License">
+          开源协议
+        </mdui-list-item>
+        <a href="https://github.com/Moonrend/Amail" target="_blank" class="about-link">
+          <mdui-list-item icon="code" description="github.com/Moonrend/Amail">
+            GitHub 仓库
+          </mdui-list-item>
+        </a>
+        <a href="https://amail.wuyuan.dev" target="_blank" class="about-link">
+          <mdui-list-item icon="book" description="使用文档与 API 参考">
+            官方文档
+          </mdui-list-item>
+        </a>
+      </mdui-list>
+    </div>
+  </div>
+
+  <!-- 开发者 -->
+  <div class="about-section">
+    <div class="about-section-title">开发者</div>
+    <div class="about-card">
+      <mdui-list>
+          <mdui-list-item icon="person" description="https://wuyuan.dev" href="https://wuyuan.dev"  target="_blank" >
+            孙悟元
+          </mdui-list-item>
+                    <mdui-list-item icon="person" description="@wuyuandev" href="https://x.com/wuyuandev" target="_blank" >
+            X(Twitter)
+          </mdui-list-item>
+                              <mdui-list-item icon="person" description="@Sunwuyuan" href="https://github.com/Sunwuyuan" target="_blank" >
+            GitHub
+          </mdui-list-item>
+      </mdui-list>
+    </div>
+  </div>
+
+  <!-- 支持 -->
+  <div class="about-actions">
+    <mdui-button href="https://afdian.com/a/wydev" target="_blank" variant="tonal" icon="favorite--rounded">
+      赞助支持
+    </mdui-button>
+    <mdui-button href="https://github.com/Moonrend/Amail" target="_blank" variant="outlined" icon="star--rounded">
+      GitHub
+    </mdui-button>
+  </div>
+</div>
+
+<%- include('../partials/scripts') %>
+<script>
+  requireAuth();
+
+  // Fetch server version from health endpoint
+  fetch('/health')
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('serverVersion').textContent = 'v' + (data.version || '未知');
+      document.getElementById('versionChip').style.display = 'inline-flex';
+    })
+    .catch(() => {
+      document.getElementById('serverVersion').textContent = '获取失败';
+    });
+</script>
+<%- include('../partials/footer') %>

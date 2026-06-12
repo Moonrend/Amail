@@ -3,6 +3,7 @@ import cors from '@fastify/cors'
 import view from '@fastify/view'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import ejs from 'ejs'
 import { config } from './config.js'
 import { getDb } from './db/index.js'
@@ -13,6 +14,18 @@ import { analyticsRoutes } from './api/analytics.js'
 import { registerErrorHandler } from './errors.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+
+// Read version from amail SDK package.json
+let appVersion = '0.0.0'
+for (const p of [
+  join(__dirname, '..', '..', 'amail', 'package.json'),   // from src/
+  join(__dirname, '..', '..', '..', 'packages', 'amail', 'package.json'), // from dist/
+]) {
+  try {
+    const pkg = JSON.parse(readFileSync(p, 'utf-8'))
+    if (pkg.version) { appVersion = pkg.version; break }
+  } catch { /* try next */ }
+}
 
 async function main() {
   const app = Fastify({
@@ -35,7 +48,7 @@ async function main() {
   await app.register(apiKeyRoutes)
   await app.register(analyticsRoutes)
 
-  app.get('/health', async () => ({ status: 'ok', version: '1.0.0' }))
+  app.get('/health', async () => ({ status: 'ok', version: appVersion }))
 
   // Pages
   app.get('/', async (_req, reply) => reply.view('pages/login.ejs'))
@@ -43,6 +56,7 @@ async function main() {
   app.get('/apikeys', async (_req, reply) => reply.view('pages/apikeys.ejs'))
   app.get('/logs', async (_req, reply) => reply.view('pages/emails.ejs'))
   app.get('/analytics', async (_req, reply) => reply.view('pages/analytics.ejs'))
+  app.get('/about', async (_req, reply) => reply.view('pages/about.ejs', { version: appVersion }))
 
   await app.listen({ port: config.port, host: config.host })
   app.log.info(`Amail running at http://${config.host}:${config.port}`)

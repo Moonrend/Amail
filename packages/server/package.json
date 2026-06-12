@@ -2,7 +2,7 @@
   "name": "@amail/server",
   "version": "1.0.0",
   "description": "Amail server — self-hosted email proxy gateway",
-  "license": "GPL-3.0-or-later",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/Moonrend/Amail"

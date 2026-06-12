@@ -4,19 +4,73 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
-  <title>Amail — 邮件代理网关</title>
+  <title>Amail — 自托管邮件代理网关</title>
   <link rel="stylesheet" href="https://unpkg.com/mdui@2/mdui.css">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
   <script src="https://unpkg.com/mdui@2/mdui.global.js"></script>
   <style>
     body {
       margin: 0;
+      <% if (typeof noPadding==='undefined' || !noPadding) { %>
+      padding-bottom: 80px;
+      <% } %>
+    }
 
-      <% if (typeof noPadding==='undefined' || !noPadding) {
-        %>padding-bottom: 80px<%
-      }
+    .drawer-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 20px 20px 16px;
+    }
 
-      %>
+    .drawer-brand-logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #6750a4, #d0bcff);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .drawer-brand-text {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .drawer-brand-name {
+      font-size: 18px;
+      font-weight: 600;
+      color: #e0e0e0;
+      line-height: 1.2;
+    }
+
+    .drawer-brand-desc {
+      font-size: 12px;
+      color: rgba(255,255,255,0.5);
+      line-height: 1.2;
+    }
+
+    .drawer-nav-section {
+    }
+
+    .drawer-footer {
+      margin-top: auto;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+
+    mdui-navigation-drawer {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .drawer-scroll {
+
+      overflow-y: auto;
     }
   </style>
   <!-- Filled -->
@@ -51,34 +105,54 @@
               <mdui-button-icon icon="logout--rounded"
                 onclick="localStorage.removeItem('amail_admin_token');window.location.href='/'"></mdui-button-icon>
       </mdui-top-app-bar>
-      <mdui-navigation-drawer close-on-overlay-click class="example-drawer" open="true">
-        <mdui-list id="navList" mdui-collapse="{accordion: true}">
-          <mdui-list-item icon="dns" href="/smtp" value="smtp">SMTP</mdui-list-item>
-          <mdui-list-item icon="key" href="/apikeys" value="apikeys">API Keys</mdui-list-item>
-          <mdui-list-item icon="email" href="/logs" value="logs">邮件日志</mdui-list-item>
-          <mdui-list-item icon="analytics" value="analytics" href="/analytics">数据统计</mdui-list-item>
-        </mdui-list>
-
+      <mdui-navigation-drawer close-on-overlay-click class="nav-drawer">
+        <div class="drawer-brand">
+          <div class="drawer-brand-text">
+            <span class="drawer-brand-name">Amail</span>
+            <span class="drawer-brand-desc">自托管邮件代理网关</span>
+          </div>
+        </div>
+        <div class="drawer-scroll">
+          <mdui-list id="navList" class="drawer-nav-section">
+            <mdui-list-item icon="dns" href="/smtp" value="smtp">SMTP</mdui-list-item>
+            <mdui-list-item icon="key" href="/apikeys" value="apikeys">API Keys</mdui-list-item>
+            <mdui-list-item icon="email" href="/logs" value="logs">邮件日志</mdui-list-item>
+            <mdui-list-item icon="analytics" value="analytics" href="/analytics">数据统计</mdui-list-item>
+          </mdui-list>
+        </div>
+        <div class="drawer-footer">
+          <mdui-list class="drawer-nav-section">
+            <mdui-list-item icon="info--rounded" href="/about" value="about">关于</mdui-list-item>
+          </mdui-list>
+        </div>
       </mdui-navigation-drawer>
 
       <script>
-        const navigationDrawer = document.querySelector(".example-drawer");
+        const navigationDrawer = document.querySelector(".nav-drawer");
         const triggerButton = document.querySelector("#trigger-drawer");
         const navigationDrawerList = navigationDrawer?.querySelector("#navList");
         const currentPath = window.location.pathname.replace(/\/$/, "");
+
+        // Responsive: auto-open on desktop, closed on mobile
+        const mql = window.matchMedia('(min-width: 1024px)');
+        function handleDrawerResponsive(e) {
+          navigationDrawer.open = e.matches;
+        }
+        mql.addEventListener('change', handleDrawerResponsive);
+        // Initial state
+        navigationDrawer.open = mql.matches;
 
         triggerButton?.addEventListener("click", () => {
           navigationDrawer.open = !navigationDrawer.open;
         });
 
-        navigationDrawerList?.querySelectorAll("mdui-list-item[href]").forEach((item) => {
+        // Highlight active nav item (both main list and footer list)
+        navigationDrawer?.querySelectorAll("mdui-list-item[href]").forEach((item) => {
           const href = (item.getAttribute("href") || "").replace(/\/$/, "");
           if (href && currentPath.startsWith(href)) {
             item.active = true;
           }
         });
-
-
       </script>
       <mdui-layout-main>
       <% } %>
