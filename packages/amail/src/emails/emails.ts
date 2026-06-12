@@ -23,7 +23,13 @@ import type {
   ListProvidersResponseSuccess,
 } from './interfaces/list-providers.interface.js';
 
-function parseEmailToApiOptions(email: CreateEmailOptions) {
+function parseEmailToApiOptions(email: CreateEmailOptions, defaultProviderId?: string) {
+  const providerId = email.providerId ?? email.provider ?? defaultProviderId;
+  if (!providerId) {
+    throw new Error(
+      'Missing providerId. Set `providerId` in payload or pass default `providerId` to `new Amail(...)`.',
+    );
+  }
   return {
     from: email.from,
     to: email.to,
@@ -43,7 +49,7 @@ function parseEmailToApiOptions(email: CreateEmailOptions) {
       content_id: a.contentId,
     })),
     scheduled_at: email.scheduledAt,
-    provider: email.provider,
+    provider_id: providerId,
   };
 }
 
@@ -77,7 +83,7 @@ export class Emails {
   ): Promise<CreateEmailResponse> {
     const data = await this.amail.post<CreateEmailResponseSuccess>(
       '/emails',
-      parseEmailToApiOptions(payload),
+      parseEmailToApiOptions(payload, this.amail.providerId),
       options,
     );
     return data;

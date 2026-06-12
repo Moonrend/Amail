@@ -5,8 +5,15 @@ import type {
   CreateBatchResponse,
   CreateBatchSuccessResponse,
 } from './interfaces/create-batch-options.interface.js';
+import type { CreateEmailOptions } from '../emails/interfaces/create-email-options.interface.js';
 
-function parseEmailToApiOptions(email: any) {
+function parseEmailToApiOptions(email: CreateEmailOptions, defaultProviderId?: string) {
+  const providerId = email.providerId ?? email.provider ?? defaultProviderId;
+  if (!providerId) {
+    throw new Error(
+      'Missing providerId. Set `providerId` in payload or pass default `providerId` to `new Amail(...)`.',
+    );
+  }
   return {
     from: email.from,
     to: email.to,
@@ -18,7 +25,7 @@ function parseEmailToApiOptions(email: any) {
     reply_to: email.replyTo,
     headers: email.headers,
     tags: email.tags,
-    attachments: email.attachments?.map((a: any) => ({
+    attachments: email.attachments?.map((a) => ({
       content: a.content,
       filename: a.filename,
       path: a.path,
@@ -26,7 +33,7 @@ function parseEmailToApiOptions(email: any) {
       content_id: a.contentId,
     })),
     scheduled_at: email.scheduledAt,
-    provider: email.provider,
+    provider_id: providerId,
   };
 }
 
@@ -50,7 +57,7 @@ export class Batch {
     payload: CreateBatchOptions,
     options: CreateBatchRequestOptions = {},
   ): Promise<CreateBatchResponse> {
-    const emails = payload.map(parseEmailToApiOptions);
+    const emails = payload.map((email) => parseEmailToApiOptions(email, this.amail.providerId));
 
     const data = await this.amail.post<CreateBatchSuccessResponse>(
       '/emails/batch',

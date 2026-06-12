@@ -78,6 +78,7 @@ curl -X POST http://localhost:3000/emails \
   -H "Authorization: Bearer am_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
+    "provider_id": "smtp_config_id",
     "from": "Acme <onboarding@yourdomain.com>",
     "to": ["user@example.com"],
     "subject": "Hello World",
@@ -97,8 +98,8 @@ curl -X POST http://localhost:3000/emails/batch \
   -H "Authorization: Bearer am_your_api_key" \
   -H "Content-Type: application/json" \
   -d '[
-    {"from": "a@domain.com", "to": ["user1@example.com"], "subject": "Hi", "html": "<p>1</p>"},
-    {"from": "a@domain.com", "to": ["user2@example.com"], "subject": "Hi", "html": "<p>2</p>"}
+    {"provider_id": "smtp_config_id", "from": "a@domain.com", "to": ["user1@example.com"], "subject": "Hi", "html": "<p>1</p>"},
+    {"provider_id": "smtp_config_id", "from": "a@domain.com", "to": ["user2@example.com"], "subject": "Hi", "html": "<p>2</p>"}
   ]'
 ```
 
@@ -120,6 +121,7 @@ curl -X DELETE http://localhost:3000/emails/dReS1gNSsHB9xVqDfNHfP \
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| provider_id | string | ✅ | SMTP Provider 的 ID（通过 `/emails/providers` 获取） |
 | from | string | ✅ | 发件人，支持 `"Name <email>"` 格式 |
 | to | string \| string[] | ✅ | 收件人，数组最多 50 个 |
 | subject | string | ✅ | 主题 |
